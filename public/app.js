@@ -925,7 +925,7 @@ function executeDownload(bitrate) {
 
   if (toast) {
     if (trackName) trackName.innerText = downloadTarget.title;
-    if (statusText) statusText.innerText = 'Starting MP3 download...';
+    if (statusText) statusText.innerText = 'Server processing & downloading MP3...';
     if (fill) fill.style.width = '70%';
     toast.style.display = 'flex';
   }
@@ -941,10 +941,10 @@ function executeDownload(bitrate) {
   document.body.removeChild(a);
 
   if (fill) fill.style.width = '100%';
-  if (statusText) statusText.innerText = 'Download dispatched!';
+  if (statusText) statusText.innerText = 'Download started!';
   setTimeout(() => {
     if (toast) toast.style.display = 'none';
-  }, 2500);
+  }, 3000);
 }
 
 function showToastNotification(msg) {

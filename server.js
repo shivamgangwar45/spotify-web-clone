@@ -69,12 +69,12 @@ app.get('/api/download', (req, res) => {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const cookiesPath = path.join(__dirname, 'cookies.txt');
 
-    // yt-dlp arguments for direct stream piping without FFmpeg crash
+    // yt-dlp arguments for robust stdout piping
     const args = [
         '-f', 'bestaudio',
         '--no-playlist',
         '--no-warnings',
-        '-o', '-', // Stream binary straight to stdout
+        '-o', '-',
         videoUrl
     ];
 
@@ -96,19 +96,26 @@ app.get('/api/download', (req, res) => {
     });
 
     ytdlp.stderr.on('data', (data) => {
-        console.error(`[yt-dlp stderr]: ${data.toString()}`);
+        console.error(`[yt-dlp log]: ${data.toString()}`);
+    });
+
+    ytdlp.on('error', (err) => {
+        console.error('[yt-dlp spawn failure]:', err.message);
+        if (!res.headersSent) {
+            res.status(500).send('Downloader engine not available or binary missing.');
+        }
     });
 
     ytdlp.on('close', (code) => {
         if (!streamStarted && !res.headersSent) {
-            console.error(`[Download Error]: Process exited with code ${code} without sending audio.`);
-            return res.status(500).send('Failed to stream audio. Check server logs.');
+            console.error(`[Download Error]: Exited with code ${code} without output.`);
+            return res.status(500).send('Failed to stream audio.');
         }
         res.end();
     });
 
     req.on('close', () => {
-        ytdlp.kill('SIGKILL');
+        ytdlp.kill('SIGTERM');
     });
 });
 
