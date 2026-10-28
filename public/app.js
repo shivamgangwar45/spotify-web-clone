@@ -40,9 +40,6 @@ let sleepTimerId = null;
 let sleepTimerEndTime = null;
 let sleepMode = null;
 
-// Download Target State
-let downloadTarget = null;
-
 // Background Audio Wake-Lock Bridge (Prevents Mobile CPU Sleep on Lock-Screen)
 const silentAudioBridge = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
 silentAudioBridge.loop = true;
@@ -225,7 +222,6 @@ async function handleLiveSearch(val, immediate = false) {
             <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
             <i class="fa-solid fa-folder-plus" title="Add to Playlist" onclick="openAddToPlaylistModal('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
             <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart" style="${isLiked ? 'color:#1ed760;' : ''}" onclick="toggleLike('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', this)"></i>
-            <i class="fa-solid fa-arrow-down" title="Download" onclick="openDownloadModalWithData('${song.id}', '${encodeURIComponent(song.title)}')"></i>
           </div>
         `;
         resultsWrap.appendChild(row);
@@ -631,7 +627,6 @@ function renderActivePlaylistTracks() {
         ${activePlaylistId !== 'liked' ? `<i class="fa-solid fa-trash" title="Remove" style="font-size:14px; color:#ff5555;" onclick="removeSongFromPlaylist('${song.id}')"></i>` : ''}
         <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
         <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart" style="${isLiked ? 'color:#1ed760;' : ''}" onclick="toggleLike('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', this)"></i>
-        <i class="fa-solid fa-arrow-down" title="Download" onclick="openDownloadModalWithData('${song.id}', '${encodeURIComponent(song.title)}')"></i>
       </div>
     `;
     container.appendChild(row);
@@ -892,61 +887,6 @@ function updateMediaSessionMetadata(track) {
   });
 }
 
-// ================= DIRECT MP3 DOWNLOAD DISPATCH =================
-
-function openDownloadModalWithData(id, titleEnc) {
-  downloadTarget = {
-    id: id,
-    title: decodeURIComponent(titleEnc)
-  };
-  const modal = document.getElementById('bitrateModal');
-  if (modal) modal.style.display = 'flex';
-}
-
-function triggerDownloadModal(e) {
-  if (e) e.stopPropagation();
-  if (!currentTrack) return alert('Play a track first to download!');
-  openDownloadModalWithData(currentTrack.id, encodeURIComponent(currentTrack.title));
-}
-
-function closeBitrateModal() {
-  const modal = document.getElementById('bitrateModal');
-  if (modal) modal.style.display = 'none';
-}
-
-function executeDownload(bitrate) {
-  if (!downloadTarget || !downloadTarget.id) return;
-  closeBitrateModal();
-
-  const toast = document.getElementById('downloadToast');
-  const trackName = document.getElementById('toastTrackName');
-  const statusText = document.getElementById('toastStatusText');
-  const fill = document.getElementById('toastProgressFill');
-
-  if (toast) {
-    if (trackName) trackName.innerText = downloadTarget.title;
-    if (statusText) statusText.innerText = 'Server processing & downloading MP3...';
-    if (fill) fill.style.width = '70%';
-    toast.style.display = 'flex';
-  }
-
-  const cleanTitle = (downloadTarget.title || 'song').replace(/[^\w\s.-]/gi, '').trim().replace(/\s+/g, '_');
-  const downloadUrl = `/api/download?id=${downloadTarget.id}&title=${encodeURIComponent(cleanTitle)}`;
-
-  const a = document.createElement('a');
-  a.href = downloadUrl;
-  a.setAttribute('download', `${cleanTitle}.mp3`);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  if (fill) fill.style.width = '100%';
-  if (statusText) statusText.innerText = 'Download started!';
-  setTimeout(() => {
-    if (toast) toast.style.display = 'none';
-  }, 3000);
-}
-
 function showToastNotification(msg) {
   const toast = document.getElementById('downloadToast');
   const trackName = document.getElementById('toastTrackName');
@@ -958,7 +898,7 @@ function showToastNotification(msg) {
   if (fill) fill.style.width = '100%';
   if (toast) {
     toast.style.display = 'flex';
-    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+    setTimeout(() => { toast.style.display = 'none'; }, 2500);
   }
 }
 

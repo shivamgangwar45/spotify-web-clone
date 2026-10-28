@@ -362,7 +362,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px;
+  padding: 0 14px;
   z-index: 100;
   box-shadow: 0 6px 16px rgba(0,0,0,0.6);
   cursor: pointer;
@@ -479,27 +479,20 @@ body {
   color: #ffffff;
 }
 
-/* ================= Full-Screen Player Screen (Updated & Fixed) ================= */
+/* ================= Full-Screen Player Screen ================= */
 .fullscreen-player-modal {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
   height: 100dvh !important;
-  z-index: 999999 !important;
+  z-index: 99999 !important;
   display: none;
   flex-direction: column;
   justify-content: space-between;
   padding: 16px 24px 28px 24px;
   box-sizing: border-box;
-
-  /* 100% Solid Dark Ambient Backdrop (Zero Bleed-Through) */
   background-color: #121212 !important;
-  background: linear-gradient(
-    180deg,
-    var(--dynamic-bg-solid, #232c27) 0%,
-    #181818 45%,
-    #121212 90%
-  ) !important;
+  background-image: linear-gradient(180deg, var(--dynamic-bg-solid, #232c27) 0%, #141414 55%, #121212 100%) !important;
   overflow: hidden !important;
 }
 
@@ -676,6 +669,7 @@ body {
   justify-content: space-between;
   margin-bottom: 16px;
   width: 100%;
+  padding: 0 16px;
 }
 
 .full-trans-icon {
@@ -729,18 +723,22 @@ body {
   width: 100%;
   padding-top: 4px;
 }
-/* Bitrate Selector Modal (128kbps, 256kbps, 320kbps) */
+
+/* ================= Generic Shared Modals ================= */
 .bitrate-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.8);
+  background: rgba(0, 0, 0, 0.75) !important;
+  backdrop-filter: blur(8px) !important;
   display: none;
   align-items: flex-end;
-  z-index: 2000;
+  z-index: 9999999 !important;
 }
 
 .bitrate-modal-box {
-  background: #242424;
+  background: #242424 !important;
+  border: 1px solid #3e3e3e !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.9) !important;
   width: 100%;
   border-radius: 16px 16px 0 0;
   padding: 20px;
@@ -748,6 +746,7 @@ body {
   flex-direction: column;
   gap: 14px;
   animation: slideUp 0.25s ease-out;
+  z-index: 10000000 !important;
 }
 
 @keyframes slideUp {
@@ -780,6 +779,7 @@ body {
   background: #1ed760;
   color: #000;
 }
+
 /* ================= Playlist Component Styles ================= */
 .create-playlist-header-btn {
   background: #1ed760;
@@ -875,6 +875,7 @@ body {
 .playlist-select-item:hover {
   background: #3e3e3e;
 }
+
 /* ================= Spotify Lyrics View Styling ================= */
 .lyrics-view-container {
   width: 100%;
@@ -965,7 +966,8 @@ body {
 .action-toggle-btn:active {
   transform: scale(0.92);
 }
-/* ================= Queue / Up Next Drawer (Feature 2) ================= */
+
+/* ================= Queue / Up Next Drawer ================= */
 .queue-view-container {
   width: 100%;
   max-width: 360px;
@@ -1058,7 +1060,7 @@ body {
   text-overflow: ellipsis;
 }
 
-/* ================= Audio Equalizer & Bass Boost (Feature 3) ================= */
+/* ================= Audio Equalizer & Bass Boost ================= */
 .eq-modal-box {
   max-width: 420px;
   margin: auto;
@@ -1112,120 +1114,24 @@ body {
   cursor: pointer;
 }
 
-/* ================= Real-Time Download Toast (Feature 5) ================= */
-.download-toast-container {
-  position: fixed;
-  bottom: 80px;
-  right: 16px;
-  background: #242424;
-  border: 1px solid #1ed760;
-  border-radius: 8px;
-  padding: 12px 16px;
-  z-index: 3000;
-  width: 310px;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.8);
-  display: none;
-  flex-direction: column;
-  gap: 8px;
-  animation: slideToast 0.3s ease-out;
-}
-
-@keyframes slideToast {
-  from { transform: translateX(120%); }
-  to { transform: translateX(0); }
-}
-
-.toast-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.toast-spinner {
-  color: #1ed760;
-  font-size: 18px;
-}
-
-.toast-info {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.toast-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.toast-status {
-  font-size: 10px;
-  color: #a7a7a7;
-}
-
-.toast-progress-bar {
-  width: 100%;
-  height: 4px;
-  background: rgba(255,255,255,0.15);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.toast-progress-fill {
-  width: 0%;
-  height: 100%;
-  background: #1ed760;
-  transition: width 0.25s linear;
-}
-
 /* ================= DYNAMIC VIBRANT THEME VARIABLES & GLOW ================= */
 :root {
   --dynamic-theme-color: #121212;
   --dynamic-theme-glow: rgba(30, 215, 96, 0.25);
 }
 
-/* Fullscreen Player Dynamic Transition */
 .fullscreen-player-modal {
   background: radial-gradient(circle at 50% 30%, var(--dynamic-theme-glow) 0%, rgba(18, 18, 18, 0.95) 70%, #121212 100%) !important;
   transition: background 0.8s ease-in-out !important;
 }
 
-/* Fullscreen Cover Art Ambient Shadow */
 .full-cover-container img {
   box-shadow: 0 16px 40px var(--dynamic-theme-glow) !important;
   transition: box-shadow 0.8s ease-in-out !important;
 }
 
-/* Mini Player Bar Vibrant Tint */
 .mini-player-bar {
   background: linear-gradient(90deg, var(--dynamic-theme-glow) 0%, rgba(24, 24, 24, 0.95) 45%) !important;
   border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
   transition: background 0.8s ease-in-out !important;
-}
-/* ================= ULTIMATE OPAQUE & MODAL FIX ================= */
-/* 1. Fullscreen player ko 100% solid karo - koi bhi transparent gradient nahi */
-.fullscreen-player-modal {
-  background: #121212 !important;
-  background-image: linear-gradient(180deg, var(--dynamic-bg-solid, #232c27) 0%, #141414 55%, #121212 100%) !important;
-  opacity: 1 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  z-index: 99999 !important;
-}
-
-/* 2. Sabhi Modals (Sleep Timer, EQ, Bitrate) Fullscreen Player ke BHI UPOR khulenge */
-.bitrate-modal-overlay {
-  z-index: 9999999 !important; /* Fullscreen se upar */
-  background: rgba(0, 0, 0, 0.75) !important;
-  backdrop-filter: blur(8px) !important;
-}
-
-.bitrate-modal-box {
-  z-index: 10000000 !important;
-  background: #242424 !important;
-  border: 1px solid #3e3e3e !important;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.9) !important;
 }

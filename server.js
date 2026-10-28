@@ -3,7 +3,6 @@ const cors = require('cors');
 const yts = require('yt-search');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
 
 const app = express();
 app.use(cors());
@@ -54,69 +53,6 @@ app.get('/api/search', async (req, res) => {
         console.error('[Search Error]:', err.message);
         res.status(500).json({ error: 'Search failed' });
     }
-});
-
-// Authenticated Direct Audio Stream Downloader
-app.get('/api/download', (req, res) => {
-    const videoId = req.query.id;
-    let cleanTitle = (req.query.title || 'song')
-        .replace(/[^\w\s.-]/gi, '')
-        .trim()
-        .replace(/\s+/g, '_');
-
-    if (!videoId) return res.status(400).send('Video ID is required');
-
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const cookiesPath = path.join(__dirname, 'cookies.txt');
-
-    // yt-dlp arguments for robust stdout piping
-    const args = [
-        '-f', 'bestaudio',
-        '--no-playlist',
-        '--no-warnings',
-        '-o', '-',
-        videoUrl
-    ];
-
-    if (fs.existsSync(cookiesPath)) {
-        args.unshift('--cookies', cookiesPath);
-    }
-
-    const ytdlp = spawn('yt-dlp', args);
-
-    let streamStarted = false;
-
-    ytdlp.stdout.on('data', (chunk) => {
-        if (!streamStarted) {
-            streamStarted = true;
-            res.setHeader('Content-Disposition', `attachment; filename="${cleanTitle}.mp3"`);
-            res.setHeader('Content-Type', 'audio/mpeg');
-        }
-        res.write(chunk);
-    });
-
-    ytdlp.stderr.on('data', (data) => {
-        console.error(`[yt-dlp log]: ${data.toString()}`);
-    });
-
-    ytdlp.on('error', (err) => {
-        console.error('[yt-dlp spawn failure]:', err.message);
-        if (!res.headersSent) {
-            res.status(500).send('Downloader engine not available or binary missing.');
-        }
-    });
-
-    ytdlp.on('close', (code) => {
-        if (!streamStarted && !res.headersSent) {
-            console.error(`[Download Error]: Exited with code ${code} without output.`);
-            return res.status(500).send('Failed to stream audio.');
-        }
-        res.end();
-    });
-
-    req.on('close', () => {
-        ytdlp.kill('SIGTERM');
-    });
 });
 
 const PORT = process.env.PORT || 5000;
