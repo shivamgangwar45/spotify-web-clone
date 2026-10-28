@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const yts = require('yt-search');
 const path = require('path');
 const fs = require('fs');
 
@@ -19,90 +20,93 @@ app.get('/', (req, res) => {
     else res.status(404).send('index.html not found');
 });
 
-// 1. Search API (JioSaavn Engine)
+// 1. Rock-Solid Search API (yt-search: Never fails on Render/Cloud)
 app.get('/api/search', async (req, res) => {
     try {
         const query = req.query.q;
         if (!query) return res.status(400).json({ error: 'Query required' });
 
-        const apiRes = await fetch(`https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=25`);
-        const data = await apiRes.json();
+        const r = await yts(query);
+        const videos = (r.videos || []).slice(0, 25).map(v => ({
+            id: v.videoId,
+            title: v.title,
+            artist: v.author ? v.author.name : 'Unknown Artist',
+            duration: v.timestamp,
+            thumbnail: v.thumbnail,
+            // Empty audioUrl triggers seamless YouTube IFrame streaming
+            audioUrl: '' 
+        }));
 
-        if (!data.success || !data.data || !data.data.results) {
-            return res.json([]);
-        }
-
-        const songs = data.data.results.map(s => {
-            // Pick highest quality image (500x500)
-            const thumb = (s.image && s.image.length > 0) 
-                ? (s.image.find(img => img.quality === '500x500') || s.image[s.image.length - 1]).url 
-                : '';
-
-            // Pick 320kbps or best available download/stream link
-            let downloadUrl = '';
-            if (s.downloadUrl && s.downloadUrl.length > 0) {
-                const bestAudio = s.downloadUrl.find(a => a.quality === '320kbps') || s.downloadUrl[s.downloadUrl.length - 1];
-                downloadUrl = bestAudio.url;
-            }
-
-            // Duration in seconds to mm:ss format
-            const sec = parseInt(s.duration) || 0;
-            const minStr = Math.floor(sec / 60);
-            const secStr = String(sec % 60).padStart(2, '0');
-
-            return {
-                id: s.id,
-                title: s.name.replace(/&quot;/g, '"').replace(/&#039;/g, "'"),
-                artist: (s.artists && s.artists.primary && s.artists.primary.length > 0) 
-                    ? s.artists.primary.map(a => a.name).join(', ') 
-                    : 'Unknown Artist',
-                duration: `${minStr}:${secStr}`,
-                thumbnail: thumb,
-                audioUrl: downloadUrl // Direct CDN audio link
-            };
-        });
-
-        res.json(songs);
+        res.json(videos);
     } catch (err) {
-        console.error('Search API error:', err.message);
-        res.status(500).json({ error: err.message });
+        console.error('[Search API Error]:', err.message);
+        res.status(500).json({ error: 'Search failed' });
     }
 });
 
-// 2. Direct Instant Download Route (Direct Browser Stream)
+// 2. Direct MP3 Downloader Engine (JioSaavn CDN Search + Fast Fallback)
 app.get('/api/download', async (req, res) => {
-    const audioUrl = req.query.url;
+    const videoId = req.query.id;
     let cleanTitle = (req.query.title || 'song')
         .replace(/[^\w\s.-]/gi, '')
         .trim()
         .replace(/\s+/g, '_');
 
-    if (!audioUrl) return res.status(400).send('Audio URL required');
+    if (!videoId) return res.status(400).send('Video ID is required');
 
+    // Strategy 1: Saavn CDN se 320kbps MP3 link dhoondo
     try {
-        // Direct stream pipe to user browser with forced download headers
-        const streamRes = await fetch(audioUrl);
-        if (!streamRes.ok) return res.redirect(audioUrl);
+        const searchTitle = (req.query.title || '').replace(/\(.*?\)|\[.*?\]|Official|Video|Audio/gi, '').trim();
+        const saavnRes = await fetch(`https://saavn.me/api/search/songs?query=${encodeURIComponent(searchTitle)}&limit=1`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const saavnData = await saavnRes.json();
 
-        res.setHeader('Content-Disposition', `attachment; filename="${cleanTitle}.mp3"`);
-        res.setHeader('Content-Type', 'audio/mpeg');
-
-        // Fast chunk streaming without loading entire file in RAM
-        const reader = streamRes.body.getReader();
-        const pump = async () => {
-            const { done, value } = await reader.read();
-            if (done) return res.end();
-            res.write(Buffer.from(value));
-            return pump();
-        };
-        return pump();
-    } catch (err) {
-        // Fallback: direct CDN redirect if proxy fails
-        return res.redirect(audioUrl);
+        if (saavnData?.data?.results?.[0]?.downloadUrl?.length > 0) {
+            const urls = saavnData.data.results[0].downloadUrl;
+            const bestLink = urls.find(u => u.quality === '320kbps') || urls[urls.length - 1];
+            if (bestLink?.url) {
+                return res.redirect(bestLink.url);
+            }
+        }
+    } catch (e) {
+        console.log('[Saavn resolver skipped, using stream pipeline]');
     }
+
+    // Strategy 2: Fast Direct Stream Pipeline (Invidious / CDN proxy)
+    const instances = [
+        'https://inv.nadeko.net',
+        'https://invidious.nerdvpn.de',
+        'https://vid.puffyan.us'
+    ];
+
+    for (const host of instances) {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000);
+
+            const vRes = await fetch(`${host}/api/v1/videos/${videoId}`, {
+                signal: controller.signal,
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            clearTimeout(timeout);
+
+            if (!vRes.ok) continue;
+            const vData = await vRes.json();
+            const audioFormats = (vData.adaptiveFormats || []).filter(f => f.type && f.type.startsWith('audio/'));
+
+            if (audioFormats.length > 0) {
+                audioFormats.sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0));
+                return res.redirect(audioFormats[0].url);
+            }
+        } catch (err) {}
+    }
+
+    // Strategy 3: Direct safe audio bridge
+    return res.redirect(`https://api.vevioz.com/api/button/mp3/${videoId}`);
 });
 
-// Dynamic PORT assignment for Render
+// Dynamic PORT assignment for Render / Localhost
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
