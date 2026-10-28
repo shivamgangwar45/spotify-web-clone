@@ -3,8 +3,6 @@ const cors = require('cors');
 const yts = require('yt-search');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
-const { spawn } = require('child_process');
 
 const app = express();
 app.use(cors());
@@ -41,85 +39,41 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// 100% Cloud-Safe Audio Downloader (Android Client Spoofing + FFmpeg)
-app.get('/api/download', (req, res) => {
+// External High-Speed Audio Stream Route (Zero Bot Block)
+app.get('/api/download', async (req, res) => {
     const videoId = req.query.id;
-    const bitrate = req.query.bitrate || '320';
-    let cleanTitle = (req.query.title || 'song')
-        .replace(/[^\w\s.-]/gi, '')
-        .trim()
-        .replace(/\s+/g, '_');
-
-    if (!cleanTitle) cleanTitle = `track_${videoId}`;
     if (!videoId) return res.status(400).send('Video ID is required');
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    
-    // Cross-platform binary resolution (Local Windows .exe vs Linux system path)
-    const localWindowsExe = path.join(__dirname, 'yt-dlp.exe');
-    const executable = (process.platform === 'win32' && fs.existsSync(localWindowsExe)) 
-        ? localWindowsExe 
-        : 'yt-dlp';
 
-    const tempFile = path.join(os.tmpdir(), `${cleanTitle}_${Date.now()}.mp3`);
+    try {
+        // Fast processing via public converter instance
+        const response = await fetch('https://api.cobalt.tools/api/json', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: videoUrl,
+                downloadMode: 'audio',
+                audioFormat: 'mp3'
+            })
+        });
 
-    // YouTube Bot Bypass: Android/iOS client spoofing + mobile user-agent
-    const args = [
-        '-f', 'ba/b',
-        '--no-playlist',
-        '--extractor-args', 'youtube:player_client=android,web',
-        '--user-agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--audio-quality', bitrate === '128' ? '5' : (bitrate === '256' ? '2' : '0'),
-        '-o', tempFile,
-        videoUrl
-    ];
+        const data = await response.json();
 
-    console.log(`[Download] Starting: ${videoId} at ${bitrate}kbps using ${executable}`);
-    const child = spawn(executable, args);
-
-    let errorLogs = '';
-    child.stderr.on('data', (d) => {
-        const msg = d.toString();
-        errorLogs += msg;
-        console.log(`[yt-dlp]: ${msg.trim()}`);
-    });
-
-    child.on('close', (code) => {
-        if (code === 0 && fs.existsSync(tempFile)) {
-            res.download(tempFile, `${cleanTitle}_${bitrate}kbps.mp3`, () => {
-                try { fs.unlinkSync(tempFile); } catch (e) {}
-            });
+        if (data && data.url) {
+            // Direct MP3 stream redirect
+            return res.redirect(data.url);
         } else {
-            console.error(`[yt-dlp exit ${code}]:`, errorLogs);
-
-            // Fallback for partially matched temp filenames
-            try {
-                const matching = fs.readdirSync(os.tmpdir()).filter(f => f.startsWith(cleanTitle) && f.endsWith('.mp3'));
-                if (matching.length > 0) {
-                    const target = path.join(os.tmpdir(), matching[0]);
-                    return res.download(target, `${cleanTitle}_${bitrate}kbps.mp3`, () => {
-                        try { fs.unlinkSync(target); } catch (e) {}
-                    });
-                }
-            } catch (err) {}
-
-            if (!res.headersSent) {
-                res.status(500).send(`Audio conversion failed: ${errorLogs.slice(-250) || 'Stream error'}`);
-            }
+            // Safe fallback redirect agar API busy ho
+            return res.redirect(`https://www.y2mate.com/youtube/${videoId}`);
         }
-    });
-
-    child.on('error', (err) => {
-        console.error('[Download process error]:', err.message);
-        if (!res.headersSent) res.status(500).send('Downloader error: ' + err.message);
-    });
-
-    req.on('close', () => {
-        child.kill();
-        try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
-    });
+    } catch (err) {
+        console.error('[Download error]:', err.message);
+        return res.redirect(`https://www.y2mate.com/youtube/${videoId}`);
+    }
 });
 
 // Dynamic PORT for cloud hosts (Render/Railway/Heroku/VPS)
