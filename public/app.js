@@ -1,5 +1,5 @@
 // ==========================================
-// Spotify Clone - Production Client Engine
+// Spotify Clone - Pure YouTube Web Engine
 // ==========================================
 
 let ytPlayer = null;
@@ -28,8 +28,7 @@ let eqSource = null;
 let bassFilter = null;
 let midFilter = null;
 let trebleFilter = null;
-const audioElem = document.getElementById('nativeAudioEngine') || new Audio();
-audioElem.crossOrigin = 'anonymous';
+const audioElem = document.getElementById('nativeAudioEngine');
 
 // Feature: Lyrics State
 let isLyricsViewActive = false;
@@ -44,7 +43,7 @@ let sleepMode = null;
 // Download Target State
 let downloadTarget = null;
 
-// ================= YOUTUBE & NATIVE AUDIO INITIALIZER =================
+// ================= YOUTUBE IFRAME ENGINE INITIALIZER =================
 
 function initYouTubeEngine() {
   if (ytPlayer) return;
@@ -82,35 +81,6 @@ window.onYouTubeIframeAPIReady = function() {
 if (window.YT && window.YT.Player) {
   initYouTubeEngine();
 }
-
-// Native audio engine listeners for direct audioUrl fallback
-audioElem.addEventListener('timeupdate', () => {
-  if (audioElem.duration) {
-    const cur = audioElem.currentTime;
-    const dur = audioElem.duration;
-    const pct = (cur / dur) * 100;
-    
-    const miniFill = document.getElementById('miniProgressFill');
-    const fullFill = document.getElementById('fullScrubFill');
-    const curTimeEl = document.getElementById('fullCurrentTime');
-    const totTimeEl = document.getElementById('fullTotalTime');
-
-    if (miniFill) miniFill.style.width = `${pct}%`;
-    if (fullFill) fullFill.style.width = `${pct}%`;
-    if (curTimeEl) curTimeEl.innerText = formatTime(cur);
-    if (totTimeEl) totTimeEl.innerText = formatTime(dur);
-
-    updateLyricsProgress(cur);
-  }
-});
-
-audioElem.addEventListener('ended', () => {
-  if (sleepMode === 'end_of_track') {
-    pauseOnSleep();
-  } else {
-    playNextTrack();
-  }
-});
 
 // Default Home Screen Collections
 const defaultStations = [
@@ -176,7 +146,7 @@ async function quickPlayTerm(query) {
   if (firstRow) firstRow.click();
 }
 
-// ================= LIVE SEARCH =================
+// ================= LIVE YOUTUBE SEARCH =================
 
 let searchTimer = null;
 async function handleLiveSearch(val) {
@@ -193,7 +163,7 @@ async function handleLiveSearch(val) {
   if (catWrap) catWrap.style.display = 'none';
   if (resultsWrap) {
     resultsWrap.style.display = 'flex';
-    resultsWrap.innerHTML = '<p style="color:#1ed760; font-size:13px; padding:10px 0;">Searching songs...</p>';
+    resultsWrap.innerHTML = '<p style="color:#1ed760; font-size:13px; padding:10px 0;">Searching songs on YouTube...</p>';
   }
 
   clearTimeout(searchTimer);
@@ -222,21 +192,21 @@ async function handleLiveSearch(val) {
             <div class="result-row-desc">Song • ${escapeHtml(song.artist)}</div>
           </div>
           <div class="result-actions" onclick="event.stopPropagation()">
-            <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', '${encodeURIComponent(song.audioUrl || '')}')"></i>
-            <i class="fa-solid fa-folder-plus" title="Add to Playlist" onclick="openAddToPlaylistModal('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', '${encodeURIComponent(song.audioUrl || '')}')"></i>
+            <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
+            <i class="fa-solid fa-folder-plus" title="Add to Playlist" onclick="openAddToPlaylistModal('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
             <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart" style="${isLiked ? 'color:#1ed760;' : ''}" onclick="toggleLike('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', this)"></i>
-            <i class="fa-solid fa-arrow-down" title="Download" onclick="openDownloadModalWithData('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.audioUrl || '')}')"></i>
+            <i class="fa-solid fa-arrow-down" title="Download" onclick="openDownloadModalWithData('${song.id}', '${encodeURIComponent(song.title)}')"></i>
           </div>
         `;
         resultsWrap.appendChild(row);
       });
     } catch (e) {
-      if (resultsWrap) resultsWrap.innerHTML = '<p style="color:#ff5555; font-size:13px;">Search failed. Ensure server is online.</p>';
+      if (resultsWrap) resultsWrap.innerHTML = '<p style="color:#ff5555; font-size:13px;">Search failed. Ensure server is running.</p>';
     }
   }, 250);
 }
 
-// ================= TRACK PLAYBACK ENGINE =================
+// ================= TRACK PLAYBACK =================
 
 function playSongByIndex(idx) {
   if (!currentPlaylist || !currentPlaylist[idx]) return;
@@ -244,7 +214,6 @@ function playSongByIndex(idx) {
   const track = currentPlaylist[idx];
   currentTrack = track;
 
-  // Update Mini Player UI
   const miniTitle = document.getElementById('miniTitle');
   const miniArtist = document.getElementById('miniArtist');
   const miniThumb = document.getElementById('miniThumb');
@@ -252,7 +221,6 @@ function playSongByIndex(idx) {
   if (miniArtist) miniArtist.innerText = track.artist;
   if (miniThumb) miniThumb.src = track.thumbnail;
 
-  // Update Full Screen Player UI
   const fullTitle = document.getElementById('fullTrackTitle');
   const fullArtist = document.getElementById('fullTrackArtist');
   const fullCover = document.getElementById('fullCoverArt');
@@ -264,43 +232,17 @@ function playSongByIndex(idx) {
 
   updateFullHeartIcon();
 
-  // Reset & Auto-fetch Lyrics
   resetLyricsState();
   fetchSongLyrics(track.title, track.artist);
 
-  // Dynamic Ambient Theme
   extractVibrantColor(track.thumbnail);
-
-  // Update MediaSession
   updateMediaSessionMetadata(track);
-
-  // Update Queue View
   renderQueueView();
 
-  // Playback execution (Audio CDN Direct vs YouTube Engine)
-  if (track.audioUrl) {
-    if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
-    if (ytProgressTimer) clearInterval(ytProgressTimer);
-    
-    audioElem.src = track.audioUrl;
-    audioElem.play().then(() => {
-      updatePlayIcons(true);
-      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    }).catch(err => {
-      console.warn("Direct stream play error:", err);
-      fallbackToYtPlayer(track.id);
-    });
-  } else {
-    audioElem.pause();
-    fallbackToYtPlayer(track.id);
-  }
-}
-
-function fallbackToYtPlayer(id) {
   if (ytPlayer && ytReady && ytPlayer.loadVideoById) {
-    playTrackIdNow(id);
+    playTrackIdNow(track.id);
   } else {
-    pendingTrackToPlay = id;
+    pendingTrackToPlay = track.id;
     if (!ytPlayer && window.YT && window.YT.Player) {
       initYouTubeEngine();
     }
@@ -359,17 +301,6 @@ function startYtTracker() {
 }
 
 function togglePlayState() {
-  if (currentTrack && currentTrack.audioUrl && audioElem.src) {
-    if (audioElem.paused) {
-      audioElem.play();
-      updatePlayIcons(true);
-    } else {
-      audioElem.pause();
-      updatePlayIcons(false);
-    }
-    return;
-  }
-
   if (!ytPlayer || !ytPlayer.getPlayerState) return;
   const state = ytPlayer.getPlayerState();
   if (state === 1) {
@@ -424,14 +355,6 @@ function seekAudioTime(e) {
   const bar = e.currentTarget;
   const rect = bar.getBoundingClientRect();
   const pos = (e.clientX - rect.left) / rect.width;
-
-  if (currentTrack && currentTrack.audioUrl && audioElem.duration) {
-    const targetSec = pos * audioElem.duration;
-    audioElem.currentTime = targetSec;
-    updateLyricsProgress(targetSec);
-    return;
-  }
-
   if (ytPlayer && ytPlayer.getDuration) {
     const targetSec = pos * ytPlayer.getDuration();
     ytPlayer.seekTo(targetSec, true);
@@ -522,7 +445,7 @@ function toggleLike(id, titleEnc, artistEnc, thumb, iconElem) {
       iconElem.style.color = '';
     }
   } else {
-    likedSongs.unshift({ id, title, artist, thumbnail: thumb, audioUrl: currentTrack?.audioUrl || '' });
+    likedSongs.unshift({ id, title, artist, thumbnail: thumb });
     if (iconElem) {
       iconElem.className = 'fa-solid fa-heart';
       iconElem.style.color = '#1ed760';
@@ -665,22 +588,21 @@ function renderActivePlaylistTracks() {
       </div>
       <div class="result-actions" onclick="event.stopPropagation()">
         ${activePlaylistId !== 'liked' ? `<i class="fa-solid fa-trash" title="Remove" style="font-size:14px; color:#ff5555;" onclick="removeSongFromPlaylist('${song.id}')"></i>` : ''}
-        <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', '${encodeURIComponent(song.audioUrl || '')}')"></i>
+        <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
         <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart" style="${isLiked ? 'color:#1ed760;' : ''}" onclick="toggleLike('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', this)"></i>
-        <i class="fa-solid fa-arrow-down" title="Download" onclick="openDownloadModalWithData('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.audioUrl || '')}')"></i>
+        <i class="fa-solid fa-arrow-down" title="Download" onclick="openDownloadModalWithData('${song.id}', '${encodeURIComponent(song.title)}')"></i>
       </div>
     `;
     container.appendChild(row);
   });
 }
 
-function openAddToPlaylistModal(id, titleEnc, artistEnc, thumb, audioUrlEnc) {
+function openAddToPlaylistModal(id, titleEnc, artistEnc, thumb) {
   trackToAddToPlaylist = {
     id: id,
     title: decodeURIComponent(titleEnc),
     artist: decodeURIComponent(artistEnc),
-    thumbnail: thumb,
-    audioUrl: audioUrlEnc ? decodeURIComponent(audioUrlEnc) : ''
+    thumbnail: thumb
   };
 
   const listContainer = document.getElementById('playlistSelectionList');
@@ -763,13 +685,12 @@ function toggleQueueView() {
   }
 }
 
-function addToQueue(id, titleEnc, artistEnc, thumb, audioUrlEnc) {
+function addToQueue(id, titleEnc, artistEnc, thumb) {
   const item = {
     id: id,
     title: decodeURIComponent(titleEnc),
     artist: decodeURIComponent(artistEnc),
-    thumbnail: thumb,
-    audioUrl: audioUrlEnc ? decodeURIComponent(audioUrlEnc) : ''
+    thumbnail: thumb
   };
   playQueue.push(item);
   showToastNotification(`Added "${item.title}" to Up Next Queue!`);
@@ -837,11 +758,13 @@ function initEqualizer() {
     trebleFilter.type = 'highshelf';
     trebleFilter.frequency.value = 10000;
 
-    eqSource = audioCtx.createMediaElementSource(audioElem);
-    eqSource.connect(bassFilter);
-    bassFilter.connect(midFilter);
-    midFilter.connect(trebleFilter);
-    trebleFilter.connect(audioCtx.destination);
+    if (audioElem) {
+      eqSource = audioCtx.createMediaElementSource(audioElem);
+      eqSource.connect(bassFilter);
+      bassFilter.connect(midFilter);
+      midFilter.connect(trebleFilter);
+      trebleFilter.connect(audioCtx.destination);
+    }
   } catch (err) {
     console.warn("Equalizer initialized safely:", err);
   }
@@ -902,9 +825,8 @@ function setupMediaSession() {
   navigator.mediaSession.setActionHandler('previoustrack', () => playPreviousTrack());
   navigator.mediaSession.setActionHandler('nexttrack', () => playNextTrack());
   navigator.mediaSession.setActionHandler('seekto', (details) => {
-    if (details.seekTime) {
-      if (currentTrack?.audioUrl) audioElem.currentTime = details.seekTime;
-      else if (ytPlayer?.seekTo) ytPlayer.seekTo(details.seekTime, true);
+    if (details.seekTime && ytPlayer && ytPlayer.seekTo) {
+      ytPlayer.seekTo(details.seekTime, true);
     }
   });
 }
@@ -924,13 +846,12 @@ function updateMediaSessionMetadata(track) {
   });
 }
 
-// ================= DIRECT MP3 DOWNLOAD ENGINE =================
+// ================= DIRECT MP3 DOWNLOAD TRIGGER =================
 
-function openDownloadModalWithData(id, titleEnc, audioUrlEnc) {
+function openDownloadModalWithData(id, titleEnc) {
   downloadTarget = {
     id: id,
-    title: decodeURIComponent(titleEnc),
-    audioUrl: audioUrlEnc ? decodeURIComponent(audioUrlEnc) : ''
+    title: decodeURIComponent(titleEnc)
   };
   const modal = document.getElementById('bitrateModal');
   if (modal) modal.style.display = 'flex';
@@ -939,7 +860,7 @@ function openDownloadModalWithData(id, titleEnc, audioUrlEnc) {
 function triggerDownloadModal(e) {
   if (e) e.stopPropagation();
   if (!currentTrack) return alert('Play a track first to download!');
-  openDownloadModalWithData(currentTrack.id, encodeURIComponent(currentTrack.title), encodeURIComponent(currentTrack.audioUrl || ''));
+  openDownloadModalWithData(currentTrack.id, encodeURIComponent(currentTrack.title));
 }
 
 function closeBitrateModal() {
@@ -958,22 +879,15 @@ function executeDownload(bitrate) {
 
   if (toast) {
     if (trackName) trackName.innerText = downloadTarget.title;
-    if (statusText) statusText.innerText = `Preparing ${bitrate}kbps audio...`;
+    if (statusText) statusText.innerText = `Preparing audio download...`;
     if (fill) fill.style.width = '35%';
     toast.style.display = 'flex';
   }
 
-  // Fallback endpoint builder (Fast CDN pipe)
   const cleanTitle = (downloadTarget.title || 'song').replace(/[^\w\s.-]/gi, '').trim().replace(/\s+/g, '_');
-  let downloadUrl = '';
+  const downloadUrl = `/api/download?id=${downloadTarget.id}&title=${encodeURIComponent(cleanTitle)}&bitrate=${bitrate}`;
 
-  if (downloadTarget.audioUrl) {
-    downloadUrl = `/api/download?url=${encodeURIComponent(downloadTarget.audioUrl)}&title=${encodeURIComponent(cleanTitle)}`;
-  } else {
-    downloadUrl = `/api/download?id=${downloadTarget.id}&title=${encodeURIComponent(cleanTitle)}&bitrate=${bitrate}`;
-  }
-
-  // Trigger Native Browser Download
+  // Direct Browser Download
   const a = document.createElement('a');
   a.href = downloadUrl;
   a.setAttribute('download', `${cleanTitle}.mp3`);
@@ -1119,8 +1033,9 @@ function renderParsedLyrics() {
     p.id = `lyric-line-${idx}`;
     p.innerText = item.text;
     p.onclick = () => {
-      if (currentTrack?.audioUrl) audioElem.currentTime = item.time;
-      else if (ytPlayer?.seekTo) ytPlayer.seekTo(item.time, true);
+      if (ytPlayer && ytPlayer.seekTo) {
+        ytPlayer.seekTo(item.time, true);
+      }
     };
     box.appendChild(p);
   });
@@ -1170,7 +1085,7 @@ function updateLyricsProgress(currentTime) {
   }
 }
 
-// ================= CANVAS VIBRANT COLOR EXTRACTION =================
+// ================= CANVAS COLOR EXTRACTION =================
 
 function extractVibrantColor(imgUrl) {
   if (!imgUrl) return;
@@ -1220,7 +1135,7 @@ function extractVibrantColor(imgUrl) {
       document.documentElement.style.setProperty('--dynamic-theme-color', `rgb(${r}, ${g}, ${b})`);
       document.documentElement.style.setProperty('--dynamic-theme-glow', `rgb(${r}, ${g}, ${b})`);
     } catch (e) {
-      console.warn('Vibrant color extraction note:', e.message);
+      console.warn('Canvas color note:', e.message);
     }
   };
 }
@@ -1298,20 +1213,6 @@ function cancelSleepTimer(showToast = true) {
 }
 
 function executeSleepFadeOut() {
-  if (currentTrack?.audioUrl) {
-    let vol = audioElem.volume || 1.0;
-    const fade = setInterval(() => {
-      vol = Math.max(0, vol - 0.1);
-      audioElem.volume = vol;
-      if (vol <= 0) {
-        clearInterval(fade);
-        pauseOnSleep();
-        audioElem.volume = 1.0;
-      }
-    }, 500);
-    return;
-  }
-
   if (!ytPlayer || !ytPlayer.getVolume) {
     pauseOnSleep();
     return;
@@ -1336,9 +1237,7 @@ function executeSleepFadeOut() {
 }
 
 function pauseOnSleep() {
-  if (currentTrack?.audioUrl) {
-    audioElem.pause();
-  } else if (ytPlayer?.pauseVideo) {
+  if (ytPlayer && ytPlayer.pauseVideo) {
     ytPlayer.pauseVideo();
   }
   updatePlayIcons(false);

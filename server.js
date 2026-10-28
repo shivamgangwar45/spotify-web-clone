@@ -8,6 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Serve static frontend assets
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -19,7 +20,7 @@ app.get('/', (req, res) => {
     else res.status(404).send('index.html not found');
 });
 
-// Search API (Fast & Reliable on Cloud)
+// 1. YouTube Live Search API
 app.get('/api/search', async (req, res) => {
     try {
         const query = req.query.q;
@@ -31,57 +32,26 @@ app.get('/api/search', async (req, res) => {
             title: v.title,
             artist: v.author ? v.author.name : 'Unknown Artist',
             duration: v.timestamp,
-            thumbnail: v.thumbnail,
-            audioUrl: ''
+            thumbnail: v.thumbnail
         }));
 
         res.json(videos);
     } catch (err) {
-        console.error('[Search Error]:', err.message);
-        res.status(500).json({ error: 'Search failed' });
+        console.error('[YouTube Search Error]:', err.message);
+        res.status(500).json({ error: 'YouTube search failed' });
     }
 });
 
-// 100% Reliable Direct MP3 Download (JioSaavn Official CDN Engine)
+// 2. YouTube MP3 Download Route (Direct Safe Stream Resolver)
 app.get('/api/download', async (req, res) => {
-    const title = req.query.title || '';
     const videoId = req.query.id;
+    if (!videoId) return res.status(400).send('YouTube Video ID is required');
 
-    if (!videoId && !title) return res.status(400).send('Song title or ID required');
-
-    // Clean song title for search
-    const cleanQuery = title
-        .replace(/\(.*?\)|\[.*?\]|Official|Music|Video|Audio|HD|4K|Remix/gi, '')
-        .trim();
-
-    try {
-        // JioSaavn Public API call (No bot block, direct audio streams)
-        const apiResponse = await fetch(`https://saavn.dev/api/search/songs?query=${encodeURIComponent(cleanQuery || title)}&limit=1`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        
-        const data = await apiResponse.json();
-
-        if (data?.success && data?.data?.results?.length > 0) {
-            const track = data.data.results[0];
-            const downloadUrls = track.downloadUrl || [];
-            
-            // Highest quality available (320kbps or fallback)
-            const targetAudio = downloadUrls.find(u => u.quality === '320kbps') || downloadUrls[downloadUrls.length - 1];
-
-            if (targetAudio?.url) {
-                // Direct high-speed CDN redirect: browser seedha file download karega
-                return res.redirect(targetAudio.url);
-            }
-        }
-    } catch (err) {
-        console.error('[Saavn Download API Error]:', err.message);
-    }
-
-    // Fail-safe direct audio converter (No Method Not Allowed errors)
+    // Direct universal YouTube MP3 stream redirect (No datacenter server-side conversion)
     return res.redirect(`https://mp3-download.cc/api/download?id=${videoId}`);
 });
 
+// Port binding for Render & Localhost
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
