@@ -43,56 +43,64 @@ let sleepMode = null;
 // Feature: Volume Engine State
 let previousVolume = 100;
 
-// ================= HARDWARE BACKGROUND AUDIO KEEP-ALIVE =================
-// Low-frequency inaudible wave to keep Android Audio HAL & MediaSession active
-const bgAudioKeeper = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-bgAudioKeeper.loop = true;
+// ================= HARDWARE BACKGROUND CARRIER WAVE =================
+// Generates an unbroken silent carrier signal directly to Android sound chip
+let hwContext = null;
+let hwOscillator = null;
+let isIntentionalPause = false;
 
-function activateBackgroundBridge() {
-  if (bgAudioKeeper.paused) {
-    bgAudioKeeper.play().catch(() => {});
+function startHardwareAudioCarrier() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    if (!hwContext) {
+      hwContext = new AudioCtx();
+    }
+
+    if (hwContext.state === 'suspended') {
+      hwContext.resume();
+    }
+
+    if (!hwOscillator) {
+      // 1Hz frequency: Completely inaudible, but registers as active audio stream in Android OS
+      hwOscillator = hwContext.createOscillator();
+      const gainNode = hwContext.createGain();
+
+      hwOscillator.type = 'sine';
+      hwOscillator.frequency.setValueAtTime(1, hwContext.currentTime);
+      gainNode.gain.setValueAtTime(0.0001, hwContext.currentTime);
+
+      hwOscillator.connect(gainNode);
+      gainNode.connect(hwContext.destination);
+      hwOscillator.start();
+    }
+  } catch (e) {
+    console.warn('[Audio Carrier Guard]:', e.message);
   }
 }
 
-let isIntentionalPause = false;
+// User ke pehle touch / click par hi hardware audio channel unlock karein
+window.addEventListener('touchstart', () => startHardwareAudioCarrier(), { once: true, passive: true });
+window.addEventListener('click', () => startHardwareAudioCarrier(), { once: true, passive: true });
 
-// Background Visibility Guard
+// Background Screen-Off Watchdog
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    activateBackgroundBridge();
-    // Agar Android background me video stream ko pause kare to turant re-trigger karein
+    startHardwareAudioCarrier();
+
+    // Agar OS background me video stream ko pause kare to wake-up signal bhejein
     if (!isIntentionalPause && ytPlayer && ytPlayer.getPlayerState) {
       setTimeout(() => {
-        if (!isIntentionalPause && ytPlayer.getPlayerState() !== 1) {
+        if (!isIntentionalPause && ytPlayer.getPlayerState() !== 1 && ytPlayer.playVideo) {
           ytPlayer.playVideo();
         }
-      }, 150);
+      }, 120);
     }
   }
 });
 
-// ================= MOBILE AUDIO UNLOCK ENGINE =================
-let mobileAudioUnlocked = false;
-
-function unlockMobileAudioContext() {
-  if (mobileAudioUnlocked) return;
-  
-  // Mobile AudioContext Resume on First Tap
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  
-  // Silent audio track trigger on user touch
-  if (bgAudioKeeper.paused) {
-    bgAudioKeeper.play().then(() => {
-      mobileAudioUnlocked = true;
-    }).catch(() => {});
-  }
-}
-
-// User ke screen par pehle touch par hi background channel unlock karein
-window.addEventListener('touchstart', unlockMobileAudioContext, { once: true });
-window.addEventListener('click', unlockMobileAudioContext, { once: true });
+// ================= YOUTUBE IFRAME ENGINE INITIALIZER =================
 
 function initYouTubeEngine() {
   if (ytPlayer) return;
@@ -107,9 +115,9 @@ function initYouTubeEngine() {
       controls: 0,
       disablekb: 1,
       fs: 0,
-      playsinline: 1,         // iOS aur Android mobile screen off bypass
+      playsinline: 1,
       enablejsapi: 1,
-      origin: window.location.origin, // Trusted origin handshake
+      origin: window.location.origin,
       rel: 0
     },
     events: {
@@ -330,11 +338,11 @@ function playSongByIndex(idx) {
 
 function playTrackIdNow(id) {
   try {
+    startHardwareAudioCarrier();
     ytPlayer.loadVideoById({ videoId: id, startSeconds: 0 });
     ytPlayer.playVideo();
     updatePlayIcons(true);
     startYtTracker();
-    activateBackgroundBridge();
   } catch (err) {
     console.warn("Player play error:", err);
   }
@@ -343,13 +351,13 @@ function playTrackIdNow(id) {
 function onYtPlayerStateChange(event) {
   if (event.data === YT.PlayerState.PLAYING) {
     isIntentionalPause = false;
+    startHardwareAudioCarrier();
     updatePlayIcons(true);
     startYtTracker();
-    activateBackgroundBridge();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else if (event.data === YT.PlayerState.PAUSED) {
     if (document.hidden && !isIntentionalPause) {
-      activateBackgroundBridge();
+      startHardwareAudioCarrier();
       setTimeout(() => {
         if (!isIntentionalPause && ytPlayer && ytPlayer.playVideo) {
           ytPlayer.playVideo();
@@ -388,18 +396,18 @@ function startYtTracker() {
 
       updateLyricsProgress(cur);
 
-      // Lock-screen position state sync to prevent Android timer freezing (--:--)
+      // Lock-screen position state sync (stops --:-- freeze on Android)
       if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
         try {
           navigator.mediaSession.setPositionState({
-            duration: dur,
+            duration: Math.max(1, dur),
             playbackRate: 1,
             position: Math.min(cur, dur)
           });
         } catch (e) {}
       }
     }
-  }, 350);
+  }, 250);
 }
 
 function togglePlayState() {
@@ -409,11 +417,10 @@ function togglePlayState() {
     isIntentionalPause = true;
     ytPlayer.pauseVideo();
     updatePlayIcons(false);
-    if (!bgAudioKeeper.paused) bgAudioKeeper.pause();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   } else {
     isIntentionalPause = false;
-    activateBackgroundBridge();
+    startHardwareAudioCarrier();
     ytPlayer.playVideo();
     updatePlayIcons(true);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -847,9 +854,9 @@ function removeQueueItem(idx) {
 
 function initEqualizer() {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    audioCtx = new AudioContext();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    audioCtx = new AudioContextClass();
 
     bassFilter = audioCtx.createBiquadFilter();
     bassFilter.type = 'lowshelf';
@@ -928,7 +935,7 @@ function setupMediaSession() {
 
   navigator.mediaSession.setActionHandler('play', () => {
     isIntentionalPause = false;
-    activateBackgroundBridge();
+    startHardwareAudioCarrier();
     if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
     updatePlayIcons(true);
     navigator.mediaSession.playbackState = 'playing';
@@ -937,7 +944,6 @@ function setupMediaSession() {
   navigator.mediaSession.setActionHandler('pause', () => {
     isIntentionalPause = true;
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-    if (!bgAudioKeeper.paused) bgAudioKeeper.pause();
     updatePlayIcons(false);
     navigator.mediaSession.playbackState = 'paused';
   });
