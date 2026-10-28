@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spotify</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Header with Default Avatar & Filter Pills -->
+  <header class="top-header" id="topHeader">
+    <div class="user-profile-avatar default-user-icon" onclick="openTasteModal()">
+      <i class="fa-solid fa-user"></i>
+    </div>
+    <div class="category-filter-pills">
+      <button class="filter-pill active" onclick="filterTab('all', this)">All</button>
+      <button class="filter-pill" onclick="filterTab('music', this)">Music</button>
+      <button class="filter-pill" onclick="filterTab('podcasts', this)">Podcasts</button>
+    </div>
+    <!-- Equalizer Button in Header -->
+    <i class="fa-solid fa-sliders" style="font-size: 16px; color: #b3b3b3; cursor: pointer;" onclick="openEqModal()" title="Equalizer & Bass"></i>
+  </header>
+
+  <!-- Main Scroll Viewport -->
+  <main class="app-viewport" id="mainViewport">
+
+    <!-- TAB 1: HOME VIEW -->
+    <div id="homeViewContainer" style="display: flex; flex-direction: column; gap: 24px;">
+      
+      <!-- Quick launch tiles -->
+      <section class="hero-quick-grid">
+        <div class="quick-tile" onclick="openLikedSongsView()">
+          <div class="quick-tile-img heart-gradient-box"><i class="fa-solid fa-heart"></i></div>
+          <span class="quick-tile-text">Liked Songs</span>
+        </div>
+        <div class="quick-tile" onclick="quickPlayTerm('Hindi songs best of 2000-2026')">
+          <img class="quick-tile-img" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100&q=80" alt="Hindi Songs">
+          <span class="quick-tile-text">Hindi songs (best of 2000-2026)</span>
+        </div>
+        <div class="quick-tile" onclick="quickPlayTerm('Dhurandhar Ranveer Singh song')">
+          <img class="quick-tile-img" src="https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?w=100&q=80" alt="Dhurandhar">
+          <span class="quick-tile-text">Dhurandhar - All Songs 🔥</span>
+        </div>
+        <div class="quick-tile" onclick="quickPlayTerm('Arijit Singh soulful tracks')">
+          <img class="quick-tile-img" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&q=80" alt="Top Mix">
+          <span class="quick-tile-text">Soulful Hindi Mix</span>
+        </div>
+      </section>
+
+      <section class="view-section">
+        <h2 class="section-headline">Recommended Stations</h2>
+        <div class="horizontal-carousel" id="recommendedStationsRow"></div>
+      </section>
+
+      <section class="view-section">
+        <h2 class="section-headline">Your top mixes</h2>
+        <div class="horizontal-carousel" id="topMixesRow"></div>
+      </section>
+
+      <section class="view-section">
+        <h2 class="section-headline">Albums featuring songs you like</h2>
+        <div class="horizontal-carousel" id="likedAlbumsRow"></div>
+      </section>
+
+      <section class="view-section">
+        <h2 class="section-headline">More like Shashwat Sachdev</h2>
+        <div class="horizontal-carousel" id="artistRecommendationsRow"></div>
+      </section>
+    </div>
+
+    <!-- TAB 2: SEARCH VIEW -->
+    <div id="searchViewContainer" style="display: none; flex-direction: column; gap: 20px;">
+      <div class="search-header-container">
+        <h1 class="search-title-text">Search</h1>
+        <div class="search-box-pill">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="mobileSearchInput" placeholder="What do you want to listen to?" oninput="handleLiveSearch(this.value)">
+        </div>
+      </div>
+
+      <div id="browseCategoriesWrap" style="display: flex; flex-direction: column; gap: 14px;">
+        <h2 class="section-headline" style="font-size: 17px;">Browse all</h2>
+        <div class="browse-categories-grid">
+          <div class="browse-card" style="background: #e13300;" onclick="quickPlayTerm('Top Hindi Music')">
+            <span>Music</span>
+            <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100&q=80" alt="Music">
+          </div>
+          <div class="browse-card" style="background: #006450;" onclick="quickPlayTerm('Science Vs Podcasts')">
+            <span>Podcasts</span>
+            <img src="https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=100&q=80" alt="Podcasts">
+          </div>
+          <div class="browse-card" style="background: #8400e7;" onclick="quickPlayTerm('Live Music Concerts')">
+            <span>Live Events</span>
+            <img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&q=80" alt="Live">
+          </div>
+          <div class="browse-card" style="background: #1e3264;" onclick="quickPlayTerm('Home of I-Pop Punjabi Pop')">
+            <span>Home of I-Pop</span>
+            <img src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&q=80" alt="I-Pop">
+          </div>
+          <div class="browse-card" style="background: #8d67ab;" onclick="openTasteModal()">
+            <span>Made For You</span>
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80" alt="For You">
+          </div>
+          <div class="browse-card" style="background: #e8115b;" onclick="quickPlayTerm('New Bollywood releases')">
+            <span>New Releases</span>
+            <img src="https://images.unsplash.com/photo-1487180144351-b8472da7d491?w=100&q=80" alt="New">
+          </div>
+        </div>
+      </div>
+
+      <div id="liveSearchResultsWrap" class="search-results-list" style="display: none;"></div>
+    </div>
+
+    <!-- TAB 3: YOUR LIBRARY VIEW -->
+    <div id="libraryViewContainer" style="display: none; flex-direction: column; gap: 18px;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h1 class="search-title-text">Your Library</h1>
+        <button class="create-playlist-header-btn" onclick="openCreatePlaylistModal()">
+          <i class="fa-solid fa-plus"></i> New Playlist
+        </button>
+      </div>
+
+      <div id="playlistsListWrap" class="playlists-container"></div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <h2 class="section-headline" id="librarySectionHeading" style="font-size: 16px;">Liked Songs</h2>
+        <div class="search-results-list" id="libraryTracksList"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Floating Mini Player Bar -->
+  <div class="mini-player-bar" id="miniPlayerBar" onclick="expandFullScreenPlayer()">
+    <div class="mini-left">
+      <img id="miniThumb" class="mini-thumb" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=80&q=80" alt="Thumb">
+      <div class="mini-details">
+        <span class="mini-title" id="miniTitle">Pick a track</span>
+        <span class="mini-artist" id="miniArtist">Tap to start</span>
+      </div>
+    </div>
+    <div class="mini-right-controls" onclick="event.stopPropagation()">
+      <button class="mini-control-icon" onclick="triggerDownloadModal(event)"><i class="fa-solid fa-arrow-down"></i></button>
+      <button class="mini-control-icon" onclick="togglePlayState()"><i class="fa-solid fa-play" id="miniPlayIcon"></i></button>
+    </div>
+    <div class="mini-progress-line">
+      <div class="mini-progress-fill" id="miniProgressFill"></div>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="bottom-nav-bar">
+    <button class="nav-tab-btn active" id="navHomeBtn" onclick="switchNavTab('home')">
+      <i class="fa-solid fa-house"></i>
+      <span>Home</span>
+    </button>
+    <button class="nav-tab-btn" id="navSearchBtn" onclick="switchNavTab('search')">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <span>Search</span>
+    </button>
+    <button class="nav-tab-btn" id="navLibraryBtn" onclick="switchNavTab('library')">
+      <i class="fa-solid fa-lines-leaning"></i>
+      <span>Your Library</span>
+    </button>
+    <button class="nav-tab-btn" onclick="openCreatePlaylistModal()">
+      <i class="fa-solid fa-plus"></i>
+      <span>Create</span>
+    </button>
+  </nav>
+
+  <!-- Full-Screen Now Playing View -->
+<div class="fullscreen-player-modal" id="fullscreenPlayerModal">
+  <div class="full-header">
+    <i class="fa-solid fa-chevron-down" onclick="closeFullScreenPlayer()"></i>
+    <div class="full-header-info">
+      <span class="full-playlist-name" id="fullPlaylistHeader">Playing from Playlist</span>
+      <span class="full-album-sub" id="fullAlbumSub">Live Stream</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <!-- Sleep Timer Moon Button -->
+      <i class="fa-solid fa-moon" id="sleepTimerIconBtn" onclick="openSleepTimerModal()" title="Sleep Timer" style="font-size: 18px; cursor: pointer;"></i>
+      <!-- Audio Equalizer Button -->
+      <i class="fa-solid fa-sliders" onclick="openEqModal()" title="Equalizer & Bass" style="font-size: 18px; cursor: pointer;"></i>
+    </div>
+  </div>
+
+    <!-- Album Cover View -->
+    <div class="full-cover-container" id="fullCoverContainer">
+      <img id="fullCoverArt" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80" alt="Cover">
+    </div>
+
+    <!-- Interactive Lyrics Screen -->
+    <div class="lyrics-view-container" id="lyricsViewContainer" style="display: none;">
+      <div class="lyrics-header-row">
+        <span>LYRICS</span>
+        <span id="lyricsModeBadge" class="lyrics-badge">SYNCED</span>
+      </div>
+      <div class="lyrics-scroll-box" id="lyricsScrollBox">
+        <p class="lyrics-placeholder">Tap the microphone to load lyrics...</p>
+      </div>
+    </div>
+
+    <!-- Interactive Up Next / Queue View (Feature 2) -->
+    <div class="queue-view-container" id="queueViewContainer" style="display: none;">
+      <div class="queue-header-row">
+        <span>UP NEXT / PLAY QUEUE</span>
+        <button class="clear-queue-btn" onclick="clearPlayQueue()">Clear</button>
+      </div>
+      <div class="queue-scroll-box" id="queueScrollBox">
+        <p class="queue-placeholder">Queue is empty. Use Search to add songs!</p>
+      </div>
+    </div>
+
+    <!-- Bottom Controls Box -->
+    <div>
+      <div class="full-meta-box">
+        <div style="overflow: hidden; max-width: 85%;">
+          <div class="full-title" id="fullTrackTitle">No Track Playing</div>
+          <div class="full-artist" id="fullTrackArtist">Select a song from Home or Search</div>
+        </div>
+        <i class="fa-regular fa-heart full-heart-icon" id="fullHeartBtn" onclick="toggleLikeCurrentSong()"></i>
+      </div>
+
+      <!-- Scrub Timeline -->
+      <div class="scrub-timeline">
+        <div class="scrub-bar" onclick="seekAudioTime(event)">
+          <div class="scrub-bar-fill" id="fullScrubFill"></div>
+        </div>
+        <div class="scrub-time-row">
+          <span id="fullCurrentTime">0:00</span>
+          <span id="fullTotalTime">0:00</span>
+        </div>
+      </div>
+
+      <!-- Transport Controls -->
+      <div class="full-transport-row">
+        <button class="full-trans-icon" onclick="toggleShuffle()" id="shuffleBtn"><i class="fa-solid fa-shuffle"></i></button>
+        <button class="full-trans-icon" onclick="playPreviousTrack()"><i class="fa-solid fa-backward-step"></i></button>
+        <button class="full-play-circle" onclick="togglePlayState()">
+          <i class="fa-solid fa-play" id="fullPlayIcon"></i>
+        </button>
+        <button class="full-trans-icon" onclick="playNextTrack()"><i class="fa-solid fa-forward-step"></i></button>
+        <button class="full-trans-icon" onclick="triggerDownloadModal(event)"><i class="fa-solid fa-circle-down"></i></button>
+      </div>
+
+      <div class="full-bottom-actions">
+        <!-- Lyrics Toggle Button -->
+        <button class="action-toggle-btn" id="lyricsToggleBtn" onclick="toggleLyricsView()" title="Lyrics">
+          <i class="fa-solid fa-microphone"></i>
+        </button>
+        <!-- Up Next / Queue Toggle Button (Feature 2) -->
+        <button class="action-toggle-btn" id="queueToggleBtn" onclick="toggleQueueView()" title="Up Next Queue">
+          <i class="fa-solid fa-list-ul"></i>
+        </button>
+        <!-- Equalizer Button (Feature 3) -->
+        <button class="action-toggle-btn" onclick="openEqModal()" title="Audio Equalizer">
+          <i class="fa-solid fa-sliders"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-Bitrate Download Modal -->
+  <div class="bitrate-modal-overlay" id="bitrateModal" onclick="closeBitrateModal()">
+    <div class="bitrate-modal-box" onclick="event.stopPropagation()">
+      <div class="bitrate-title">Download MP3 Audio Quality</div>
+      <button class="bitrate-btn-option" onclick="executeDownload('128')">
+        <span>Normal Quality</span>
+        <span>128 kbps (Fastest)</span>
+      </button>
+      <button class="bitrate-btn-option" onclick="executeDownload('256')">
+        <span>High Quality</span>
+        <span>256 kbps</span>
+      </button>
+      <button class="bitrate-btn-option" onclick="executeDownload('320')">
+        <span>Ultra HD Audio</span>
+        <span>320 kbps (Best Sound)</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Create New Playlist Modal -->
+  <div class="bitrate-modal-overlay" id="createPlaylistModal" onclick="closeCreatePlaylistModal()">
+    <div class="bitrate-modal-box" onclick="event.stopPropagation()">
+      <div class="bitrate-title">Create New Playlist</div>
+      <input type="text" id="newPlaylistInput" placeholder="Give your playlist a name" style="width: 100%; padding: 12px; background: #333; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 14px; outline: none; margin-top: 6px;">
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button class="bitrate-btn-option" style="flex: 1; justify-content: center; background: #3e3e3e;" onclick="closeCreatePlaylistModal()">Cancel</button>
+        <button class="bitrate-btn-option" style="flex: 1; justify-content: center; background: #1ed760; color: #000;" onclick="submitNewPlaylist()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Track To Playlist Modal -->
+  <div class="bitrate-modal-overlay" id="addToPlaylistModal" onclick="closeAddToPlaylistModal()">
+    <div class="bitrate-modal-box" onclick="event.stopPropagation()">
+      <div class="bitrate-title">Add Track To Playlist</div>
+      <div id="playlistSelectionList" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto;"></div>
+      <button class="bitrate-btn-option" style="justify-content: center; background: #3e3e3e; margin-top: 10px;" onclick="closeAddToPlaylistModal()">Close</button>
+    </div>
+  </div>
+
+  <!-- Sleep Timer Modal -->
+  <div class="bitrate-modal-overlay" id="sleepTimerModal" onclick="closeSleepTimerModal()">
+    <div class="bitrate-modal-box" onclick="event.stopPropagation()">
+      <div class="bitrate-title" style="display: flex; align-items: center; justify-content: space-between;">
+        <span><i class="fa-solid fa-moon" style="color: #1ed760; margin-right: 8px;"></i>Sleep Timer</span>
+        <span id="activeTimerBadge" style="font-size: 11px; color: #1ed760; font-weight: 600;">Off</span>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+        <button class="bitrate-btn-option" onclick="setSleepTimer(15)">
+          <span>15 Minutes</span>
+          <i class="fa-regular fa-clock"></i>
+        </button>
+        <button class="bitrate-btn-option" onclick="setSleepTimer(30)">
+          <span>30 Minutes</span>
+          <i class="fa-regular fa-clock"></i>
+        </button>
+        <button class="bitrate-btn-option" onclick="setSleepTimer(45)">
+          <span>45 Minutes</span>
+          <i class="fa-regular fa-clock"></i>
+        </button>
+        <button class="bitrate-btn-option" onclick="setSleepTimer(60)">
+          <span>1 Hour</span>
+          <i class="fa-regular fa-clock"></i>
+        </button>
+        <button class="bitrate-btn-option" onclick="setSleepTimer('end_of_track')">
+          <span>End of Track</span>
+          <i class="fa-solid fa-forward-step"></i>
+        </button>
+        <button class="bitrate-btn-option" id="turnOffTimerBtn" style="color: #ff5555; display: none;" onclick="cancelSleepTimer()">
+          <span>Turn off timer</span>
+          <i class="fa-solid fa-ban"></i>
+        </button>
+      </div>
+
+      <button class="bitrate-btn-option" style="justify-content: center; background: #333; margin-top: 8px;" onclick="closeSleepTimerModal()">Close</button>
+    </div>
+  </div>
+
+  <!-- Modal: Audio Equalizer & Bass Boost (Feature 3) -->
+  <div class="bitrate-modal-overlay" id="equalizerModal" onclick="closeEqModal()">
+    <div class="bitrate-modal-box eq-modal-box" onclick="event.stopPropagation()">
+      <div class="bitrate-title"><i class="fa-solid fa-sliders" style="color: #1ed760;"></i> Audio Equalizer & Bass</div>
+      
+      <!-- EQ Presets -->
+      <div class="eq-preset-row">
+        <button class="eq-pill active" onclick="applyEqPreset('flat', this)">Flat</button>
+        <button class="eq-pill" onclick="applyEqPreset('bass', this)">Bass Boost 🚀</button>
+        <button class="eq-pill" onclick="applyEqPreset('vocal', this)">Vocal Boost</button>
+        <button class="eq-pill" onclick="applyEqPreset('rock', this)">Rock</button>
+        <button class="eq-pill" onclick="applyEqPreset('electronic', this)">Club / EDM</button>
+      </div>
+
+      <!-- Sliders -->
+      <div class="eq-slider-group">
+        <div class="eq-slider-item">
+          <label>Bass (60Hz)</label>
+          <input type="range" min="-12" max="15" value="0" id="eqBass" oninput="updateEqBand('bass', this.value)">
+          <span id="eqBassVal">0 dB</span>
+        </div>
+        <div class="eq-slider-item">
+          <label>Mids (1kHz)</label>
+          <input type="range" min="-12" max="15" value="0" id="eqMid" oninput="updateEqBand('mid', this.value)">
+          <span id="eqMidVal">0 dB</span>
+        </div>
+        <div class="eq-slider-item">
+          <label>Treble (10kHz)</label>
+          <input type="range" min="-12" max="15" value="0" id="eqTreble" oninput="updateEqBand('treble', this.value)">
+          <span id="eqTrebleVal">0 dB</span>
+        </div>
+      </div>
+
+      <button class="bitrate-btn-option" style="justify-content: center; background: #1ed760; color: #000; margin-top: 8px;" onclick="closeEqModal()">Done</button>
+    </div>
+  </div>
+
+  <!-- Real-Time Download Progress Toast Notification (Feature 5) -->
+  <div class="download-toast-container" id="downloadToast">
+    <div class="toast-content">
+      <div class="toast-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+      <div class="toast-info">
+        <span class="toast-title" id="toastTrackName">Downloading track...</span>
+        <span class="toast-status" id="toastStatusText">Fetching stream from local engine...</span>
+      </div>
+    </div>
+    <div class="toast-progress-bar">
+      <div class="toast-progress-fill" id="toastProgressFill"></div>
+    </div>
+  </div>
+
+  <!-- Hidden Fallback YouTube Engine -->
+  <div id="hiddenYtEngine" style="position: fixed; bottom: 0; right: 0; width: 200px; height: 200px; opacity: 0.001; pointer-events: none; z-index: -1;"></div>
+
+  <audio id="nativeAudioEngine" preload="auto" crossorigin="anonymous"></audio>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="app.js"></script>
+</body>
+</html>
