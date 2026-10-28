@@ -56,7 +56,7 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// Authenticated MP3 Downloader using cookies.txt
+// Authenticated Direct Audio Stream Downloader
 app.get('/api/download', (req, res) => {
     const videoId = req.query.id;
     let cleanTitle = (req.query.title || 'song')
@@ -69,14 +69,12 @@ app.get('/api/download', (req, res) => {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const cookiesPath = path.join(__dirname, 'cookies.txt');
 
-    res.setHeader('Content-Disposition', `attachment; filename="${cleanTitle}.mp3"`);
-    res.setHeader('Content-Type', 'audio/mpeg');
-
-    // yt-dlp arguments with authenticated session cookies
+    // yt-dlp arguments for direct stream piping without FFmpeg crash
     const args = [
-        '-x',
-        '--audio-format', 'mp3',
-        '-o', '-', // Stream to stdout
+        '-f', 'bestaudio',
+        '--no-playlist',
+        '--no-warnings',
+        '-o', '-', // Stream binary straight to stdout
         videoUrl
     ];
 
@@ -86,20 +84,31 @@ app.get('/api/download', (req, res) => {
 
     const ytdlp = spawn('yt-dlp', args);
 
-    ytdlp.stdout.pipe(res);
+    let streamStarted = false;
+
+    ytdlp.stdout.on('data', (chunk) => {
+        if (!streamStarted) {
+            streamStarted = true;
+            res.setHeader('Content-Disposition', `attachment; filename="${cleanTitle}.mp3"`);
+            res.setHeader('Content-Type', 'audio/mpeg');
+        }
+        res.write(chunk);
+    });
 
     ytdlp.stderr.on('data', (data) => {
-        console.error(`[yt-dlp stderr]: ${data}`);
+        console.error(`[yt-dlp stderr]: ${data.toString()}`);
     });
 
     ytdlp.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`yt-dlp process exited with code ${code}`);
+        if (!streamStarted && !res.headersSent) {
+            console.error(`[Download Error]: Process exited with code ${code} without sending audio.`);
+            return res.status(500).send('Failed to stream audio. Check server logs.');
         }
+        res.end();
     });
 
     req.on('close', () => {
-        ytdlp.kill();
+        ytdlp.kill('SIGKILL');
     });
 });
 
