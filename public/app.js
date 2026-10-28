@@ -71,7 +71,28 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// ================= YOUTUBE IFRAME ENGINE INITIALIZER =================
+// ================= MOBILE AUDIO UNLOCK ENGINE =================
+let mobileAudioUnlocked = false;
+
+function unlockMobileAudioContext() {
+  if (mobileAudioUnlocked) return;
+  
+  // Mobile AudioContext Resume on First Tap
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  
+  // Silent audio track trigger on user touch
+  if (bgAudioKeeper.paused) {
+    bgAudioKeeper.play().then(() => {
+      mobileAudioUnlocked = true;
+    }).catch(() => {});
+  }
+}
+
+// User ke screen par pehle touch par hi background channel unlock karein
+window.addEventListener('touchstart', unlockMobileAudioContext, { once: true });
+window.addEventListener('click', unlockMobileAudioContext, { once: true });
 
 function initYouTubeEngine() {
   if (ytPlayer) return;
@@ -79,14 +100,16 @@ function initYouTubeEngine() {
   if (!engineDiv) return;
 
   ytPlayer = new YT.Player('hiddenYtEngine', {
-    height: '200',
-    width: '200',
+    height: '1',
+    width: '1',
     playerVars: {
       autoplay: 1,
       controls: 0,
       disablekb: 1,
       fs: 0,
-      playsinline: 1,
+      playsinline: 1,         // iOS aur Android mobile screen off bypass
+      enablejsapi: 1,
+      origin: window.location.origin, // Trusted origin handshake
       rel: 0
     },
     events: {

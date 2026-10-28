@@ -365,8 +365,8 @@
     </div>
   </div>
 
-  <!-- Visible to Browser Engine (Bypasses Chrome Video Background Freezing) -->
-<div id="hiddenYtEngine" style="position: fixed; top: -9999px; left: -9999px; width: 200px; height: 200px; pointer-events: none;"></div>
+  
+<div id="hiddenYtEngine" style="position: fixed; bottom: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; z-index: -1;"></div>
   <audio id="nativeAudioEngine" preload="auto" crossorigin="anonymous"></audio>
 
   <script src="https://www.youtube.com/iframe_api"></script>
