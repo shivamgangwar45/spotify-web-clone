@@ -40,7 +40,8 @@ let sleepTimerId = null;
 let sleepTimerEndTime = null;
 let sleepMode = null;
 
-// Background Audio Wake-Lock Bridge (Prevents Mobile CPU Sleep on Lock-Screen)
+// ================= ROBUST BACKGROUND AUDIO ENGINE =================
+// Active Wake-Lock Audio Track: 1-second inaudible audio loop that registers in Android Audio Mixer
 const silentAudioBridge = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
 silentAudioBridge.loop = true;
 
@@ -49,6 +50,21 @@ function enableBackgroundAudio() {
     silentAudioBridge.play().catch(() => {});
   }
 }
+
+// Keep-Alive Visibility Guard: Prevents Android Chrome from killing background playback
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    enableBackgroundAudio();
+    if (ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 2) {
+      // Agar Chrome ne background hide par pause kar diya, toh resume karo
+      setTimeout(() => {
+        if (ytPlayer && ytPlayer.playVideo) {
+          ytPlayer.playVideo();
+        }
+      }, 150);
+    }
+  }
+});
 
 // ================= YOUTUBE IFRAME ENGINE INITIALIZER =================
 
@@ -65,7 +81,7 @@ function initYouTubeEngine() {
       controls: 0,
       disablekb: 1,
       fs: 0,
-      playsinline: 1,
+      playsinline: 1, // Crucial for iOS/Android inline background
       rel: 0
     },
     events: {
@@ -302,8 +318,13 @@ function onYtPlayerStateChange(event) {
     enableBackgroundAudio();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else if (event.data === YT.PlayerState.PAUSED) {
-    updatePlayIcons(false);
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    // Agar screen off ho chuki hai aur track automatically pause hua hai, background audio chalate rahein
+    if (document.hidden) {
+      enableBackgroundAudio();
+    } else {
+      updatePlayIcons(false);
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    }
   } else if (event.data === YT.PlayerState.ENDED) {
     if (sleepMode === 'end_of_track') {
       pauseOnSleep();
@@ -342,6 +363,7 @@ function togglePlayState() {
   if (state === 1) {
     ytPlayer.pauseVideo();
     updatePlayIcons(false);
+    if (!silentAudioBridge.paused) silentAudioBridge.pause();
   } else {
     enableBackgroundAudio();
     ytPlayer.playVideo();
@@ -729,7 +751,6 @@ function addToQueue(id, titleEnc, artistEnc, thumb) {
     thumbnail: thumb
   };
   playQueue.push(item);
-  showToastNotification(`Added "${item.title}" to Up Next Queue!`);
   renderQueueView();
 }
 
@@ -885,21 +906,6 @@ function updateMediaSessionMetadata(track) {
       { src: track.thumbnail, sizes: '512x512', type: 'image/jpeg' }
     ]
   });
-}
-
-function showToastNotification(msg) {
-  const toast = document.getElementById('downloadToast');
-  const trackName = document.getElementById('toastTrackName');
-  const statusText = document.getElementById('toastStatusText');
-  const fill = document.getElementById('toastProgressFill');
-
-  if (trackName) trackName.innerText = msg;
-  if (statusText) statusText.innerText = 'Spotify Web Player';
-  if (fill) fill.style.width = '100%';
-  if (toast) {
-    toast.style.display = 'flex';
-    setTimeout(() => { toast.style.display = 'none'; }, 2500);
-  }
 }
 
 // ================= LYRICS ENGINE (LRCLIB API) =================
@@ -1169,7 +1175,6 @@ function setSleepTimer(val) {
 
   if (val === 'end_of_track') {
     if (icon) icon.classList.add('active');
-    showToastNotification('Sleep timer: Stopping at end of this track');
     closeSleepTimerModal();
     return;
   }
@@ -1179,8 +1184,6 @@ function setSleepTimer(val) {
   sleepTimerEndTime = Date.now() + ms;
   if (icon) icon.classList.add('active');
 
-  showToastNotification(`Sleep timer set for ${minutes} minutes`);
-
   sleepTimerId = setTimeout(() => {
     executeSleepFadeOut();
   }, Math.max(0, ms - 5000));
@@ -1188,7 +1191,7 @@ function setSleepTimer(val) {
   closeSleepTimerModal();
 }
 
-function cancelSleepTimer(showToast = true) {
+function cancelSleepTimer() {
   if (sleepTimerId) {
     clearTimeout(sleepTimerId);
     sleepTimerId = null;
@@ -1198,11 +1201,7 @@ function cancelSleepTimer(showToast = true) {
 
   const icon = document.getElementById('sleepTimerIconBtn');
   if (icon) icon.classList.remove('active');
-
-  if (showToast) {
-    showToastNotification('Sleep timer turned off');
-    closeSleepTimerModal();
-  }
+  closeSleepTimerModal();
 }
 
 function executeSleepFadeOut() {
@@ -1234,8 +1233,7 @@ function pauseOnSleep() {
     ytPlayer.pauseVideo();
   }
   updatePlayIcons(false);
-  cancelSleepTimer(false);
-  showToastNotification('Playback paused by Sleep Timer 🌙');
+  cancelSleepTimer();
 }
 
 // Helpers
