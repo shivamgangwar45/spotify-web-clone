@@ -1286,3 +1286,41 @@ function filterTab(category, btn) {
     renderHomeRows();
   }
 }
+// Volume Control Engine
+let previousVolume = 100;
+
+function changePlayerVolume(val) {
+  const num = parseInt(val, 10);
+  const icon = document.getElementById('volumeIconBtn');
+
+  if (ytPlayer && ytPlayer.setVolume) {
+    ytPlayer.setVolume(num);
+  }
+
+  if (icon) {
+    if (num === 0) {
+      icon.className = 'fa-solid fa-volume-xmark';
+      icon.style.color = '#ff5555';
+    } else if (num < 50) {
+      icon.className = 'fa-solid fa-volume-low';
+      icon.style.color = '#b3b3b3';
+    } else {
+      icon.className = 'fa-solid fa-volume-high';
+      icon.style.color = '#b3b3b3';
+    }
+  }
+}
+
+function toggleMuteVolume() {
+  const slider = document.getElementById('playerVolumeSlider');
+  if (!ytPlayer || !slider) return;
+
+  if (slider.value > 0) {
+    previousVolume = slider.value;
+    slider.value = 0;
+    changePlayerVolume(0);
+  } else {
+    slider.value = previousVolume || 80;
+    changePlayerVolume(slider.value);
+  }
+}
