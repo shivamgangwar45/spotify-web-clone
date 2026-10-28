@@ -10,7 +10,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend assets
+// Frontend static assets serve karein
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -41,7 +41,7 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// 100% Cross-Platform Audio Downloader (Linux & Windows)
+// 100% Cloud-Safe Audio Downloader (Android Client Spoofing + FFmpeg)
 app.get('/api/download', (req, res) => {
     const videoId = req.query.id;
     const bitrate = req.query.bitrate || '320';
@@ -63,9 +63,12 @@ app.get('/api/download', (req, res) => {
 
     const tempFile = path.join(os.tmpdir(), `${cleanTitle}_${Date.now()}.mp3`);
 
+    // YouTube Bot Bypass: Android/iOS client spoofing + mobile user-agent
     const args = [
         '-f', 'ba/b',
         '--no-playlist',
+        '--extractor-args', 'youtube:player_client=android,web',
+        '--user-agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
         '--extract-audio',
         '--audio-format', 'mp3',
         '--audio-quality', bitrate === '128' ? '5' : (bitrate === '256' ? '2' : '0'),
@@ -76,8 +79,11 @@ app.get('/api/download', (req, res) => {
     console.log(`[Download] Starting: ${videoId} at ${bitrate}kbps using ${executable}`);
     const child = spawn(executable, args);
 
+    let errorLogs = '';
     child.stderr.on('data', (d) => {
-        console.log(`[yt-dlp debug]: ${d.toString()}`);
+        const msg = d.toString();
+        errorLogs += msg;
+        console.log(`[yt-dlp]: ${msg.trim()}`);
     });
 
     child.on('close', (code) => {
@@ -86,6 +92,8 @@ app.get('/api/download', (req, res) => {
                 try { fs.unlinkSync(tempFile); } catch (e) {}
             });
         } else {
+            console.error(`[yt-dlp exit ${code}]:`, errorLogs);
+
             // Fallback for partially matched temp filenames
             try {
                 const matching = fs.readdirSync(os.tmpdir()).filter(f => f.startsWith(cleanTitle) && f.endsWith('.mp3'));
@@ -98,14 +106,14 @@ app.get('/api/download', (req, res) => {
             } catch (err) {}
 
             if (!res.headersSent) {
-                res.status(500).send('Audio conversion failed on server.');
+                res.status(500).send(`Audio conversion failed: ${errorLogs.slice(-250) || 'Stream error'}`);
             }
         }
     });
 
     child.on('error', (err) => {
-        console.error('[Download error]:', err.message);
-        if (!res.headersSent) res.status(500).send('Downloader process error: ' + err.message);
+        console.error('[Download process error]:', err.message);
+        if (!res.headersSent) res.status(500).send('Downloader error: ' + err.message);
     });
 
     req.on('close', () => {
