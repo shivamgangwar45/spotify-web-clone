@@ -40,28 +40,32 @@ let sleepTimerId = null;
 let sleepTimerEndTime = null;
 let sleepMode = null;
 
-// ================= ROBUST BACKGROUND AUDIO ENGINE =================
-// Active Wake-Lock Audio Track: 1-second inaudible audio loop that registers in Android Audio Mixer
-const silentAudioBridge = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-silentAudioBridge.loop = true;
+// ================= HARDWARE AUDIO WAKE-LOCK BRIDGE =================
+// Low-frequency inaudible sub-audio loop (Forces Android Audio HAL to stay awake)
+let bgAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+bgAudio.loop = true;
 
-function enableBackgroundAudio() {
-  if (silentAudioBridge.paused) {
-    silentAudioBridge.play().catch(() => {});
+function activateMobileAudioBridge() {
+  if (bgAudio.paused) {
+    bgAudio.play().catch(() => {});
   }
 }
 
-// Keep-Alive Visibility Guard: Prevents Android Chrome from killing background playback
+// Background Screen-Off Watchdog
+let isIntentionalPause = false;
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    enableBackgroundAudio();
-    if (ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 2) {
-      // Agar Chrome ne background hide par pause kar diya, toh resume karo
+    // Screen band hui ya user dusre app par gaya
+    activateMobileAudioBridge();
+    
+    // Agar gaana chal raha tha aur OS ne background mein force pause kiya, toh force resume karo
+    if (!isIntentionalPause && ytPlayer && ytPlayer.getPlayerState) {
       setTimeout(() => {
-        if (ytPlayer && ytPlayer.playVideo) {
+        if (ytPlayer.getPlayerState() !== 1 && !isIntentionalPause) {
           ytPlayer.playVideo();
         }
-      }, 150);
+      }, 200);
     }
   }
 });
@@ -81,7 +85,7 @@ function initYouTubeEngine() {
       controls: 0,
       disablekb: 1,
       fs: 0,
-      playsinline: 1, // Crucial for iOS/Android inline background
+      playsinline: 1, // iOS & Android inline background flag
       rel: 0
     },
     events: {
@@ -263,6 +267,7 @@ function playSongByIndex(idx) {
   currentTrackIndex = idx;
   const track = currentPlaylist[idx];
   currentTrack = track;
+  isIntentionalPause = false;
 
   const miniTitle = document.getElementById('miniTitle');
   const miniArtist = document.getElementById('miniArtist');
@@ -305,7 +310,7 @@ function playTrackIdNow(id) {
     ytPlayer.playVideo();
     updatePlayIcons(true);
     startYtTracker();
-    enableBackgroundAudio();
+    activateMobileAudioBridge();
   } catch (err) {
     console.warn("Player play error:", err);
   }
@@ -313,14 +318,21 @@ function playTrackIdNow(id) {
 
 function onYtPlayerStateChange(event) {
   if (event.data === YT.PlayerState.PLAYING) {
+    isIntentionalPause = false;
     updatePlayIcons(true);
     startYtTracker();
-    enableBackgroundAudio();
+    activateMobileAudioBridge();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else if (event.data === YT.PlayerState.PAUSED) {
-    // Agar screen off ho chuki hai aur track automatically pause hua hai, background audio chalate rahein
-    if (document.hidden) {
-      enableBackgroundAudio();
+    // Agar user ne khud pause nahi kiya aur screen band ho gayi
+    if (document.hidden && !isIntentionalPause) {
+      activateMobileAudioBridge();
+      // Auto-resume background audio
+      setTimeout(() => {
+        if (!isIntentionalPause && ytPlayer && ytPlayer.playVideo) {
+          ytPlayer.playVideo();
+        }
+      }, 150);
     } else {
       updatePlayIcons(false);
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -361,13 +373,17 @@ function togglePlayState() {
   if (!ytPlayer || !ytPlayer.getPlayerState) return;
   const state = ytPlayer.getPlayerState();
   if (state === 1) {
+    isIntentionalPause = true;
     ytPlayer.pauseVideo();
     updatePlayIcons(false);
-    if (!silentAudioBridge.paused) silentAudioBridge.pause();
+    if (!bgAudio.paused) bgAudio.pause();
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   } else {
-    enableBackgroundAudio();
+    isIntentionalPause = false;
+    activateMobileAudioBridge();
     ytPlayer.playVideo();
     updatePlayIcons(true);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   }
 }
 
@@ -878,12 +894,21 @@ function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
 
   navigator.mediaSession.setActionHandler('play', () => {
-    enableBackgroundAudio();
-    togglePlayState();
+    isIntentionalPause = false;
+    activateMobileAudioBridge();
+    if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
+    updatePlayIcons(true);
+    navigator.mediaSession.playbackState = 'playing';
   });
+
   navigator.mediaSession.setActionHandler('pause', () => {
-    togglePlayState();
+    isIntentionalPause = true;
+    if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+    if (!bgAudio.paused) bgAudio.pause();
+    updatePlayIcons(false);
+    navigator.mediaSession.playbackState = 'paused';
   });
+
   navigator.mediaSession.setActionHandler('previoustrack', () => playPreviousTrack());
   navigator.mediaSession.setActionHandler('nexttrack', () => playNextTrack());
   navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -898,7 +923,7 @@ function updateMediaSessionMetadata(track) {
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title,
     artist: track.artist,
-    album: 'Spotify Web Clone',
+    album: 'Spotify Web Player',
     artwork: [
       { src: track.thumbnail, sizes: '96x96', type: 'image/jpeg' },
       { src: track.thumbnail, sizes: '128x128', type: 'image/jpeg' },
@@ -1169,7 +1194,7 @@ function closeSleepTimerModal() {
 }
 
 function setSleepTimer(val) {
-  cancelSleepTimer(false);
+  cancelSleepTimer();
   sleepMode = val;
   const icon = document.getElementById('sleepTimerIconBtn');
 
@@ -1229,6 +1254,7 @@ function executeSleepFadeOut() {
 }
 
 function pauseOnSleep() {
+  isIntentionalPause = true;
   if (ytPlayer && ytPlayer.pauseVideo) {
     ytPlayer.pauseVideo();
   }
