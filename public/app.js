@@ -191,7 +191,6 @@ async function handleLiveSearch(val, immediate = false) {
   clearTimeout(searchTimer);
 
   const executeFetch = async () => {
-    // Abort previous in-flight request if user is still typing
     if (searchAbortController) {
       searchAbortController.abort();
     }
@@ -241,7 +240,6 @@ async function handleLiveSearch(val, immediate = false) {
   if (immediate) {
     executeFetch();
   } else {
-    // 380ms delay gives typing time to finish, saving useless server roundtrips
     searchTimer = setTimeout(executeFetch, 380);
   }
 }
@@ -894,7 +892,7 @@ function updateMediaSessionMetadata(track) {
   });
 }
 
-// ================= DOWNLOAD HANDLER =================
+// ================= DIRECT MP3 DOWNLOAD DISPATCH =================
 
 function openDownloadModalWithData(id, titleEnc) {
   downloadTarget = {
@@ -917,8 +915,36 @@ function closeBitrateModal() {
 }
 
 function executeDownload(bitrate) {
+  if (!downloadTarget || !downloadTarget.id) return;
   closeBitrateModal();
-  showToastNotification('Offline downloads are restricted by source. Enjoy unlimited web streaming!');
+
+  const toast = document.getElementById('downloadToast');
+  const trackName = document.getElementById('toastTrackName');
+  const statusText = document.getElementById('toastStatusText');
+  const fill = document.getElementById('toastProgressFill');
+
+  if (toast) {
+    if (trackName) trackName.innerText = downloadTarget.title;
+    if (statusText) statusText.innerText = 'Starting MP3 download...';
+    if (fill) fill.style.width = '70%';
+    toast.style.display = 'flex';
+  }
+
+  const cleanTitle = (downloadTarget.title || 'song').replace(/[^\w\s.-]/gi, '').trim().replace(/\s+/g, '_');
+  const downloadUrl = `/api/download?id=${downloadTarget.id}&title=${encodeURIComponent(cleanTitle)}`;
+
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.setAttribute('download', `${cleanTitle}.mp3`);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  if (fill) fill.style.width = '100%';
+  if (statusText) statusText.innerText = 'Download dispatched!';
+  setTimeout(() => {
+    if (toast) toast.style.display = 'none';
+  }, 2500);
 }
 
 function showToastNotification(msg) {
@@ -979,6 +1005,10 @@ async function fetchSongLyrics(rawTitle, rawArtist) {
   try {
     const url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
     const res = await fetch(url);
+    if (!res.ok) {
+      fallbackSearchLyrics(cleanTitle);
+      return;
+    }
     const data = await res.json();
 
     if (data && data.syncedLyrics) {
@@ -1001,6 +1031,10 @@ async function fallbackSearchLyrics(query) {
 
   try {
     const res = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) {
+      if (box) box.innerHTML = '<p class="lyrics-placeholder">Lyrics not available for this song.</p>';
+      return;
+    }
     const results = await res.json();
 
     if (results && results.length > 0) {

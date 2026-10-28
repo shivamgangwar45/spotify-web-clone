@@ -3,12 +3,13 @@ const cors = require('cors');
 const yts = require('yt-search');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Frontend static assets
+// Serve static frontend assets
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -29,13 +30,11 @@ app.get('/api/search', async (req, res) => {
         const query = (req.query.q || '').trim().toLowerCase();
         if (!query) return res.status(400).json({ error: 'Query required' });
 
-        // Cache hit: instant response
         if (searchCache.has(query)) {
             return res.json(searchCache.get(query));
         }
 
         const r = await yts(query);
-        // Slicing to 12 results drastically reduces parsing delay and JSON size
         const videos = (r.videos || []).slice(0, 12).map(v => ({
             id: v.videoId,
             title: v.title,
@@ -44,7 +43,6 @@ app.get('/api/search', async (req, res) => {
             thumbnail: v.thumbnail
         }));
 
-        // Limit memory footprint (keeps last 100 queries)
         if (searchCache.size > 100) {
             const firstKey = searchCache.keys().next().value;
             searchCache.delete(firstKey);
@@ -56,6 +54,53 @@ app.get('/api/search', async (req, res) => {
         console.error('[Search Error]:', err.message);
         res.status(500).json({ error: 'Search failed' });
     }
+});
+
+// Authenticated MP3 Downloader using cookies.txt
+app.get('/api/download', (req, res) => {
+    const videoId = req.query.id;
+    let cleanTitle = (req.query.title || 'song')
+        .replace(/[^\w\s.-]/gi, '')
+        .trim()
+        .replace(/\s+/g, '_');
+
+    if (!videoId) return res.status(400).send('Video ID is required');
+
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const cookiesPath = path.join(__dirname, 'cookies.txt');
+
+    res.setHeader('Content-Disposition', `attachment; filename="${cleanTitle}.mp3"`);
+    res.setHeader('Content-Type', 'audio/mpeg');
+
+    // yt-dlp arguments with authenticated session cookies
+    const args = [
+        '-x',
+        '--audio-format', 'mp3',
+        '-o', '-', // Stream to stdout
+        videoUrl
+    ];
+
+    if (fs.existsSync(cookiesPath)) {
+        args.unshift('--cookies', cookiesPath);
+    }
+
+    const ytdlp = spawn('yt-dlp', args);
+
+    ytdlp.stdout.pipe(res);
+
+    ytdlp.stderr.on('data', (data) => {
+        console.error(`[yt-dlp stderr]: ${data}`);
+    });
+
+    ytdlp.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`yt-dlp process exited with code ${code}`);
+        }
+    });
+
+    req.on('close', () => {
+        ytdlp.kill();
+    });
 });
 
 const PORT = process.env.PORT || 5000;
