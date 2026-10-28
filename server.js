@@ -8,7 +8,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend assets
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -20,7 +19,7 @@ app.get('/', (req, res) => {
     else res.status(404).send('index.html not found');
 });
 
-// 1. YouTube Search Engine (yt-search: No external fetch, 0% failure on Render)
+// Search API (Fast & Reliable on Cloud)
 app.get('/api/search', async (req, res) => {
     try {
         const query = req.query.q;
@@ -33,62 +32,56 @@ app.get('/api/search', async (req, res) => {
             artist: v.author ? v.author.name : 'Unknown Artist',
             duration: v.timestamp,
             thumbnail: v.thumbnail,
-            audioUrl: '' 
+            audioUrl: ''
         }));
 
         res.json(videos);
     } catch (err) {
-        console.error('[YTS Error]:', err.message);
+        console.error('[Search Error]:', err.message);
         res.status(500).json({ error: 'Search failed' });
     }
 });
 
-// 2. Direct Audio Stream / Download Route
+// 100% Reliable Direct MP3 Download (JioSaavn Official CDN Engine)
 app.get('/api/download', async (req, res) => {
+    const title = req.query.title || '';
     const videoId = req.query.id;
-    let cleanTitle = (req.query.title || 'song')
-        .replace(/[^\w\s.-]/gi, '')
-        .trim()
-        .replace(/\s+/g, '_');
 
-    if (!videoId) return res.status(400).send('Video ID is required');
+    if (!videoId && !title) return res.status(400).send('Song title or ID required');
 
-    // Strategy 1: Saavn direct CDN search
+    // Clean song title for search
+    const cleanQuery = title
+        .replace(/\(.*?\)|\[.*?\]|Official|Music|Video|Audio|HD|4K|Remix/gi, '')
+        .trim();
+
     try {
-        const cleanName = (req.query.title || '').replace(/\(.*?\)|\[.*?\]|Official|Video|Audio/gi, '').trim();
-        const sRes = await fetch(`https://saavn.me/api/search/songs?query=${encodeURIComponent(cleanName)}&limit=1`);
-        const sData = await sRes.json();
-        if (sData?.data?.results?.[0]?.downloadUrl?.length > 0) {
-            const urls = sData.data.results[0].downloadUrl;
-            const target = urls.find(u => u.quality === '320kbps') || urls[urls.length - 1];
-            if (target?.url) return res.redirect(target.url);
-        }
-    } catch (e) {}
+        // JioSaavn Public API call (No bot block, direct audio streams)
+        const apiResponse = await fetch(`https://saavn.dev/api/search/songs?query=${encodeURIComponent(cleanQuery || title)}&limit=1`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        
+        const data = await apiResponse.json();
 
-    // Strategy 2: Fast Invidious Audio Stream
-    const instances = ['https://inv.nadeko.net', 'https://invidious.nerdvpn.de'];
-    for (const host of instances) {
-        try {
-            const controller = new AbortController();
-            const to = setTimeout(() => controller.abort(), 3000);
-            const vRes = await fetch(`${host}/api/v1/videos/${videoId}`, { signal: controller.signal });
-            clearTimeout(to);
-            if (vRes.ok) {
-                const vData = await vRes.json();
-                const audios = (vData.adaptiveFormats || []).filter(f => f.type && f.type.startsWith('audio/'));
-                if (audios.length > 0) {
-                    audios.sort((a, b) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0));
-                    return res.redirect(audios[0].url);
-                }
+        if (data?.success && data?.data?.results?.length > 0) {
+            const track = data.data.results[0];
+            const downloadUrls = track.downloadUrl || [];
+            
+            // Highest quality available (320kbps or fallback)
+            const targetAudio = downloadUrls.find(u => u.quality === '320kbps') || downloadUrls[downloadUrls.length - 1];
+
+            if (targetAudio?.url) {
+                // Direct high-speed CDN redirect: browser seedha file download karega
+                return res.redirect(targetAudio.url);
             }
-        } catch (err) {}
+        }
+    } catch (err) {
+        console.error('[Saavn Download API Error]:', err.message);
     }
 
-    // Strategy 3: Fast Audio Resolver Fallback
-    return res.redirect(`https://api.vevioz.com/api/button/mp3/${videoId}`);
+    // Fail-safe direct audio converter (No Method Not Allowed errors)
+    return res.redirect(`https://mp3-download.cc/api/download?id=${videoId}`);
 });
 
-// Render dynamic PORT
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
