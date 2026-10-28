@@ -40,33 +40,47 @@ let sleepTimerId = null;
 let sleepTimerEndTime = null;
 let sleepMode = null;
 
-// ================= HARDWARE AUDIO WAKE-LOCK BRIDGE =================
-// Low-frequency inaudible sub-audio loop (Forces Android Audio HAL to stay awake)
-let bgAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-bgAudio.loop = true;
+// Feature: Volume Engine State
+let previousVolume = 100;
 
-function activateMobileAudioBridge() {
-  if (bgAudio.paused) {
-    bgAudio.play().catch(() => {});
+// ================= BULLETPROOF BACKGROUND AUDIO ENGINE =================
+// 1-second inaudible wave to keep Android Audio HAL & MediaSession active
+const bgAudioKeeper = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+bgAudioKeeper.loop = true;
+
+function keepAudioAwake() {
+  if (bgAudioKeeper.paused) {
+    bgAudioKeeper.play().catch(() => {});
   }
 }
 
 // Background Screen-Off Watchdog
 let isIntentionalPause = false;
+let backgroundReviveInterval = null;
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Screen band hui ya user dusre app par gaya
-    activateMobileAudioBridge();
+    keepAudioAwake();
     
-    // Agar gaana chal raha tha aur OS ne background mein force pause kiya, toh force resume karo
-    if (!isIntentionalPause && ytPlayer && ytPlayer.getPlayerState) {
-      setTimeout(() => {
-        if (ytPlayer.getPlayerState() !== 1 && !isIntentionalPause) {
+    // Auto-revive guard agar mobile OS video element ko background pause trigger kare
+    if (backgroundReviveInterval) clearInterval(backgroundReviveInterval);
+    backgroundReviveInterval = setInterval(() => {
+      if (!document.hidden) {
+        clearInterval(backgroundReviveInterval);
+        return;
+      }
+      if (ytPlayer && ytPlayer.getPlayerState && !isIntentionalPause) {
+        if (ytPlayer.getPlayerState() === 2) { // 2 = Paused
           ytPlayer.playVideo();
         }
-      }, 200);
-    }
+      }
+    }, 400);
+
+    setTimeout(() => {
+      if (backgroundReviveInterval) clearInterval(backgroundReviveInterval);
+    }, 6000);
+  } else {
+    if (backgroundReviveInterval) clearInterval(backgroundReviveInterval);
   }
 });
 
@@ -85,7 +99,7 @@ function initYouTubeEngine() {
       controls: 0,
       disablekb: 1,
       fs: 0,
-      playsinline: 1, // iOS & Android inline background flag
+      playsinline: 1, // Crucial for iOS & Android inline audio
       rel: 0
     },
     events: {
@@ -233,7 +247,7 @@ async function handleLiveSearch(val, immediate = false) {
         row.className = 'result-row-item';
         row.onclick = () => playSongByIndex(idx);
         row.innerHTML = `
-          <img class="result-row-img" src="${song.thumbnail}" alt="${song.title}" loading="lazy">
+          <img class="result-row-img" src="${song.thumbnail}" alt="${song.title}">
           <div class="result-row-info">
             <div class="result-row-title">${escapeHtml(song.title)}</div>
             <div class="result-row-desc">Song • ${escapeHtml(song.artist)}</div>
@@ -310,7 +324,7 @@ function playTrackIdNow(id) {
     ytPlayer.playVideo();
     updatePlayIcons(true);
     startYtTracker();
-    activateMobileAudioBridge();
+    keepAudioAwake();
   } catch (err) {
     console.warn("Player play error:", err);
   }
@@ -321,18 +335,16 @@ function onYtPlayerStateChange(event) {
     isIntentionalPause = false;
     updatePlayIcons(true);
     startYtTracker();
-    activateMobileAudioBridge();
+    keepAudioAwake();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else if (event.data === YT.PlayerState.PAUSED) {
-    // Agar user ne khud pause nahi kiya aur screen band ho gayi
     if (document.hidden && !isIntentionalPause) {
-      activateMobileAudioBridge();
-      // Auto-resume background audio
+      keepAudioAwake();
       setTimeout(() => {
         if (!isIntentionalPause && ytPlayer && ytPlayer.playVideo) {
           ytPlayer.playVideo();
         }
-      }, 150);
+      }, 200);
     } else {
       updatePlayIcons(false);
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -376,11 +388,11 @@ function togglePlayState() {
     isIntentionalPause = true;
     ytPlayer.pauseVideo();
     updatePlayIcons(false);
-    if (!bgAudio.paused) bgAudio.pause();
+    if (!bgAudioKeeper.paused) bgAudioKeeper.pause();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   } else {
     isIntentionalPause = false;
-    activateMobileAudioBridge();
+    keepAudioAwake();
     ytPlayer.playVideo();
     updatePlayIcons(true);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -895,7 +907,7 @@ function setupMediaSession() {
 
   navigator.mediaSession.setActionHandler('play', () => {
     isIntentionalPause = false;
-    activateMobileAudioBridge();
+    keepAudioAwake();
     if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
     updatePlayIcons(true);
     navigator.mediaSession.playbackState = 'playing';
@@ -904,13 +916,14 @@ function setupMediaSession() {
   navigator.mediaSession.setActionHandler('pause', () => {
     isIntentionalPause = true;
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-    if (!bgAudio.paused) bgAudio.pause();
+    if (!bgAudioKeeper.paused) bgAudioKeeper.pause();
     updatePlayIcons(false);
     navigator.mediaSession.playbackState = 'paused';
   });
 
   navigator.mediaSession.setActionHandler('previoustrack', () => playPreviousTrack());
   navigator.mediaSession.setActionHandler('nexttrack', () => playNextTrack());
+  
   navigator.mediaSession.setActionHandler('seekto', (details) => {
     if (details.seekTime && ytPlayer && ytPlayer.seekTo) {
       ytPlayer.seekTo(details.seekTime, true);
@@ -1262,32 +1275,7 @@ function pauseOnSleep() {
   cancelSleepTimer();
 }
 
-// Helpers
-function escapeHtml(str) {
-  return (str || '').replace(/[&<>"']/g, m => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[m]));
-}
-
-function openTasteModal() {
-  alert('Search any song or artist from the Search tab to play!');
-}
-
-function filterTab(category, btn) {
-  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-
-  if (category === 'music') {
-    quickPlayTerm('Top Bollywood Trending Music');
-  } else if (category === 'podcasts') {
-    quickPlayTerm('Trending Hindi Podcasts');
-  } else {
-    switchNavTab('home');
-    renderHomeRows();
-  }
-}
-// Volume Control Engine
-let previousVolume = 100;
+// ================= VOLUME CONTROL ENGINE =================
 
 function changePlayerVolume(val) {
   const num = parseInt(val, 10);
@@ -1322,5 +1310,30 @@ function toggleMuteVolume() {
   } else {
     slider.value = previousVolume || 80;
     changePlayerVolume(slider.value);
+  }
+}
+
+// Helpers
+function escapeHtml(str) {
+  return (str || '').replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[m]));
+}
+
+function openTasteModal() {
+  alert('Search any song or artist from the Search tab to play!');
+}
+
+function filterTab(category, btn) {
+  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  if (category === 'music') {
+    quickPlayTerm('Top Bollywood Trending Music');
+  } else if (category === 'podcasts') {
+    quickPlayTerm('Trending Hindi Podcasts');
+  } else {
+    switchNavTab('home');
+    renderHomeRows();
   }
 }
