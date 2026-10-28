@@ -20,20 +20,36 @@ app.get('/', (req, res) => {
     else res.status(404).send('index.html not found');
 });
 
-// Fast Search Engine (yt-search)
+// In-Memory Search Cache (0ms response for repeated queries)
+const searchCache = new Map();
+
+// Optimized Fast Search API
 app.get('/api/search', async (req, res) => {
     try {
-        const query = req.query.q;
+        const query = (req.query.q || '').trim().toLowerCase();
         if (!query) return res.status(400).json({ error: 'Query required' });
 
+        // Cache hit: instant response
+        if (searchCache.has(query)) {
+            return res.json(searchCache.get(query));
+        }
+
         const r = await yts(query);
-        const videos = (r.videos || []).slice(0, 25).map(v => ({
+        // Slicing to 12 results drastically reduces parsing delay and JSON size
+        const videos = (r.videos || []).slice(0, 12).map(v => ({
             id: v.videoId,
             title: v.title,
             artist: v.author ? v.author.name : 'Unknown Artist',
             duration: v.timestamp,
             thumbnail: v.thumbnail
         }));
+
+        // Limit memory footprint (keeps last 100 queries)
+        if (searchCache.size > 100) {
+            const firstKey = searchCache.keys().next().value;
+            searchCache.delete(firstKey);
+        }
+        searchCache.set(query, videos);
 
         res.json(videos);
     } catch (err) {

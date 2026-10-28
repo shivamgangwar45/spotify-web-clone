@@ -119,6 +119,16 @@ window.addEventListener('DOMContentLoaded', () => {
   renderHomeRows();
   setupMediaSession();
   initEqualizer();
+
+  const searchInput = document.getElementById('mobileSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        clearTimeout(searchTimer);
+        handleLiveSearch(searchInput.value.trim(), true);
+      }
+    });
+  }
 });
 
 function renderHomeRows() {
@@ -151,15 +161,17 @@ async function quickPlayTerm(query) {
   switchNavTab('search');
   const input = document.getElementById('mobileSearchInput');
   if (input) input.value = query;
-  await handleLiveSearch(query);
+  await handleLiveSearch(query, true);
   const firstRow = document.querySelector('.result-row-item');
   if (firstRow) firstRow.click();
 }
 
-// ================= LIVE YOUTUBE SEARCH =================
+// ================= ULTRA-FAST LIVE SEARCH =================
 
 let searchTimer = null;
-async function handleLiveSearch(val) {
+let searchAbortController = null;
+
+async function handleLiveSearch(val, immediate = false) {
   const query = val.trim();
   const catWrap = document.getElementById('browseCategoriesWrap');
   const resultsWrap = document.getElementById('liveSearchResultsWrap');
@@ -177,9 +189,18 @@ async function handleLiveSearch(val) {
   }
 
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
+
+  const executeFetch = async () => {
+    // Abort previous in-flight request if user is still typing
+    if (searchAbortController) {
+      searchAbortController.abort();
+    }
+    searchAbortController = new AbortController();
+
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+        signal: searchAbortController.signal
+      });
       const songs = await res.json();
 
       if (!resultsWrap) return;
@@ -211,9 +232,18 @@ async function handleLiveSearch(val) {
         resultsWrap.appendChild(row);
       });
     } catch (e) {
-      if (resultsWrap) resultsWrap.innerHTML = '<p style="color:#ff5555; font-size:13px;">Search failed. Ensure server is running.</p>';
+      if (e.name !== 'AbortError' && resultsWrap) {
+        resultsWrap.innerHTML = '<p style="color:#ff5555; font-size:13px;">Search failed. Ensure server is running.</p>';
+      }
     }
-  }, 250);
+  };
+
+  if (immediate) {
+    executeFetch();
+  } else {
+    // 380ms delay gives typing time to finish, saving useless server roundtrips
+    searchTimer = setTimeout(executeFetch, 380);
+  }
 }
 
 // ================= TRACK PLAYBACK =================
@@ -265,8 +295,6 @@ function playTrackIdNow(id) {
     ytPlayer.playVideo();
     updatePlayIcons(true);
     startYtTracker();
-
-    // Screen-off background audio keep-alive trigger
     enableBackgroundAudio();
   } catch (err) {
     console.warn("Player play error:", err);
@@ -866,7 +894,7 @@ function updateMediaSessionMetadata(track) {
   });
 }
 
-// ================= DOWNLOAD HANDLER (SAFE PRODUCTION NOTIFICATION) =================
+// ================= DOWNLOAD HANDLER =================
 
 function openDownloadModalWithData(id, titleEnc) {
   downloadTarget = {
