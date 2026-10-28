@@ -846,7 +846,7 @@ function updateMediaSessionMetadata(track) {
   });
 }
 
-// ================= DIRECT MP3 DOWNLOAD TRIGGER =================
+// ================= CLIENT-SIDE RESIDENTIAL DOWNLOAD ENGINE =================
 
 function openDownloadModalWithData(id, titleEnc) {
   downloadTarget = {
@@ -868,8 +868,8 @@ function closeBitrateModal() {
   if (modal) modal.style.display = 'none';
 }
 
-function executeDownload(bitrate) {
-  if (!downloadTarget) return;
+async function executeDownload(bitrate) {
+  if (!downloadTarget || !downloadTarget.id) return;
   closeBitrateModal();
 
   const toast = document.getElementById('downloadToast');
@@ -879,24 +879,78 @@ function executeDownload(bitrate) {
 
   if (toast) {
     if (trackName) trackName.innerText = downloadTarget.title;
-    if (statusText) statusText.innerText = `Preparing audio download...`;
+    if (statusText) statusText.innerText = 'Connecting via client audio engine...';
     if (fill) fill.style.width = '35%';
     toast.style.display = 'flex';
   }
 
   const cleanTitle = (downloadTarget.title || 'song').replace(/[^\w\s.-]/gi, '').trim().replace(/\s+/g, '_');
-  const downloadUrl = `/api/download?id=${downloadTarget.id}&title=${encodeURIComponent(cleanTitle)}&bitrate=${bitrate}`;
+  const videoUrl = `https://www.youtube.com/watch?v=${downloadTarget.id}`;
 
-  // Direct Browser Download
-  const a = document.createElement('a');
-  a.href = downloadUrl;
-  a.setAttribute('download', `${cleanTitle}.mp3`);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  // Public Cobalt instances (Called from user's browser, bypassing Render Datacenter blocks)
+  const instances = [
+    'https://api.cobalt.tools',
+    'https://cobalt.kwiatekm.tokyo',
+    'https://cobalt-backend.canine.tools'
+  ];
 
+  let streamUrl = null;
+
+  for (const host of instances) {
+    try {
+      if (fill) fill.style.width = '60%';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(`${host}/`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: videoUrl,
+          downloadMode: 'audio',
+          audioFormat: 'mp3'
+        })
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.url) {
+          streamUrl = data.url;
+          break;
+        }
+      }
+    } catch (e) {
+      // Try next client endpoint
+    }
+  }
+
+  if (streamUrl) {
+    if (fill) fill.style.width = '100%';
+    if (statusText) statusText.innerText = 'Download started!';
+
+    const a = document.createElement('a');
+    a.href = streamUrl;
+    a.setAttribute('download', `${cleanTitle}.mp3`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    setTimeout(() => {
+      if (toast) toast.style.display = 'none';
+    }, 2500);
+    return;
+  }
+
+  // Graceful Portal Fallback (User Residential IP portal)
   if (fill) fill.style.width = '100%';
-  if (statusText) statusText.innerText = 'Download started!';
+  if (statusText) statusText.innerText = 'Opening high-speed portal...';
+  window.open(`https://cobalt.tools/#${encodeURIComponent(videoUrl)}`, '_blank');
+
   setTimeout(() => {
     if (toast) toast.style.display = 'none';
   }, 2500);

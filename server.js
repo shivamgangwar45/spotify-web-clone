@@ -8,7 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend assets
+// Frontend static assets
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -20,7 +20,7 @@ app.get('/', (req, res) => {
     else res.status(404).send('index.html not found');
 });
 
-// 1. YouTube Live Search API
+// Fast Search Engine (yt-search)
 app.get('/api/search', async (req, res) => {
     try {
         const query = req.query.q;
@@ -37,21 +37,11 @@ app.get('/api/search', async (req, res) => {
 
         res.json(videos);
     } catch (err) {
-        console.error('[YouTube Search Error]:', err.message);
-        res.status(500).json({ error: 'YouTube search failed' });
+        console.error('[Search Error]:', err.message);
+        res.status(500).json({ error: 'Search failed' });
     }
 });
 
-// 2. YouTube MP3 Download Route (Direct Safe Stream Resolver)
-app.get('/api/download', async (req, res) => {
-    const videoId = req.query.id;
-    if (!videoId) return res.status(400).send('YouTube Video ID is required');
-
-    // Direct universal YouTube MP3 stream redirect (No datacenter server-side conversion)
-    return res.redirect(`https://mp3-download.cc/api/download?id=${videoId}`);
-});
-
-// Port binding for Render & Localhost
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
