@@ -43,6 +43,16 @@ let sleepMode = null;
 // Download Target State
 let downloadTarget = null;
 
+// Background Audio Wake-Lock Bridge (Prevents Mobile CPU Sleep on Lock-Screen)
+const silentAudioBridge = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+silentAudioBridge.loop = true;
+
+function enableBackgroundAudio() {
+  if (silentAudioBridge.paused) {
+    silentAudioBridge.play().catch(() => {});
+  }
+}
+
 // ================= YOUTUBE IFRAME ENGINE INITIALIZER =================
 
 function initYouTubeEngine() {
@@ -255,6 +265,9 @@ function playTrackIdNow(id) {
     ytPlayer.playVideo();
     updatePlayIcons(true);
     startYtTracker();
+
+    // Screen-off background audio keep-alive trigger
+    enableBackgroundAudio();
   } catch (err) {
     console.warn("Player play error:", err);
   }
@@ -264,6 +277,7 @@ function onYtPlayerStateChange(event) {
   if (event.data === YT.PlayerState.PLAYING) {
     updatePlayIcons(true);
     startYtTracker();
+    enableBackgroundAudio();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else if (event.data === YT.PlayerState.PAUSED) {
     updatePlayIcons(false);
@@ -307,6 +321,7 @@ function togglePlayState() {
     ytPlayer.pauseVideo();
     updatePlayIcons(false);
   } else {
+    enableBackgroundAudio();
     ytPlayer.playVideo();
     updatePlayIcons(true);
   }
@@ -815,13 +830,18 @@ function setEqValues(b, m, t) {
   updateEqBand('treble', t);
 }
 
-// ================= MEDIASESSION API =================
+// ================= MEDIASESSION API (LOCK SCREEN CONTROLS) =================
 
 function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
 
-  navigator.mediaSession.setActionHandler('play', () => togglePlayState());
-  navigator.mediaSession.setActionHandler('pause', () => togglePlayState());
+  navigator.mediaSession.setActionHandler('play', () => {
+    enableBackgroundAudio();
+    togglePlayState();
+  });
+  navigator.mediaSession.setActionHandler('pause', () => {
+    togglePlayState();
+  });
   navigator.mediaSession.setActionHandler('previoustrack', () => playPreviousTrack());
   navigator.mediaSession.setActionHandler('nexttrack', () => playNextTrack());
   navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -846,7 +866,7 @@ function updateMediaSessionMetadata(track) {
   });
 }
 
-// ================= DIRECT RESIDENTIAL DOWNLOAD PORTAL =================
+// ================= DOWNLOAD HANDLER (SAFE PRODUCTION NOTIFICATION) =================
 
 function openDownloadModalWithData(id, titleEnc) {
   downloadTarget = {
@@ -869,30 +889,8 @@ function closeBitrateModal() {
 }
 
 function executeDownload(bitrate) {
-  if (!downloadTarget || !downloadTarget.id) return;
   closeBitrateModal();
-
-  const toast = document.getElementById('downloadToast');
-  const trackName = document.getElementById('toastTrackName');
-  const statusText = document.getElementById('toastStatusText');
-  const fill = document.getElementById('toastProgressFill');
-
-  if (toast) {
-    if (trackName) trackName.innerText = downloadTarget.title;
-    if (statusText) statusText.innerText = 'Redirecting to fast download gateway...';
-    if (fill) fill.style.width = '100%';
-    toast.style.display = 'flex';
-  }
-
-  const videoId = downloadTarget.id;
-
-  // Direct High-Speed Clean Resolver (Bypasses CORS & 'File wasn't available' browser blocks)
-  const downloadPortal = `https://cobalt.tools/#https://www.youtube.com/watch?v=${videoId}`;
-  window.open(downloadPortal, '_blank');
-
-  setTimeout(() => {
-    if (toast) toast.style.display = 'none';
-  }, 2000);
+  showToastNotification('Offline downloads are restricted by source. Enjoy unlimited web streaming!');
 }
 
 function showToastNotification(msg) {
@@ -902,11 +900,11 @@ function showToastNotification(msg) {
   const fill = document.getElementById('toastProgressFill');
 
   if (trackName) trackName.innerText = msg;
-  if (statusText) statusText.innerText = 'Queue updated';
+  if (statusText) statusText.innerText = 'Spotify Web Player';
   if (fill) fill.style.width = '100%';
   if (toast) {
     toast.style.display = 'flex';
-    setTimeout(() => { toast.style.display = 'none'; }, 2500);
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
   }
 }
 
