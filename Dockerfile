@@ -1,25 +1,26 @@
-FROM node:18-bullseye-slim
+FROM node:20-bookworm-slim
 
-# System dependencies: Python aur ffmpeg install karein
+# Install system utilities & ffmpeg
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip ffmpeg && \
+    apt-get install -y --no-install-recommends curl ca-certificates python3 ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
-# Global yt-dlp binary install karein
-RUN pip3 install --no-cache-dir yt-dlp
+# Download standalone yt-dlp binary directly (no pip/mirror issues)
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp
 
 # App directory set karein
 WORKDIR /app
 
 # Dependencies install karein
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 
-# Baaki saara code aur cookies.txt copy karein
+# Code copy karein
 COPY . .
 
 # Port expose karein
 EXPOSE 10000
 
-# Application start karein
+# Start app
 CMD ["npm", "start"]
