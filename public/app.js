@@ -925,26 +925,20 @@ function executeDownload(bitrate) {
 
   if (toast) {
     if (trackName) trackName.innerText = downloadTarget.title;
-    if (statusText) statusText.innerText = 'Starting MP3 download...';
-    if (fill) fill.style.width = '70%';
+    if (statusText) statusText.innerText = 'Redirecting to audio gateway...';
+    if (fill) fill.style.width = '100%';
     toast.style.display = 'flex';
   }
 
-  const cleanTitle = (downloadTarget.title || 'song').replace(/[^\w\s.-]/gi, '').trim().replace(/\s+/g, '_');
-  const downloadUrl = `/api/download?id=${downloadTarget.id}&title=${encodeURIComponent(cleanTitle)}`;
+  const videoId = downloadTarget.id;
 
-  const a = document.createElement('a');
-  a.href = downloadUrl;
-  a.setAttribute('download', `${cleanTitle}.mp3`);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  // Direct fast audio converter gateway (Zero ads, user IP bypass)
+  const downloadUrl = `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=mp3`;
+  window.open(downloadUrl, '_blank');
 
-  if (fill) fill.style.width = '100%';
-  if (statusText) statusText.innerText = 'Download dispatched!';
   setTimeout(() => {
     if (toast) toast.style.display = 'none';
-  }, 2500);
+  }, 2000);
 }
 
 function showToastNotification(msg) {
