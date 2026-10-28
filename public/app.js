@@ -43,44 +43,31 @@ let sleepMode = null;
 // Feature: Volume Engine State
 let previousVolume = 100;
 
-// ================= BULLETPROOF BACKGROUND AUDIO ENGINE =================
-// 1-second inaudible wave to keep Android Audio HAL & MediaSession active
-const bgAudioKeeper = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+// ================= HARDWARE BACKGROUND AUDIO KEEP-ALIVE =================
+// Low-frequency inaudible wave to keep Android Audio HAL & MediaSession active
+const bgAudioKeeper = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
 bgAudioKeeper.loop = true;
 
-function keepAudioAwake() {
+function activateBackgroundBridge() {
   if (bgAudioKeeper.paused) {
     bgAudioKeeper.play().catch(() => {});
   }
 }
 
-// Background Screen-Off Watchdog
 let isIntentionalPause = false;
-let backgroundReviveInterval = null;
 
+// Background Visibility Guard
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    keepAudioAwake();
-    
-    // Auto-revive guard agar mobile OS video element ko background pause trigger kare
-    if (backgroundReviveInterval) clearInterval(backgroundReviveInterval);
-    backgroundReviveInterval = setInterval(() => {
-      if (!document.hidden) {
-        clearInterval(backgroundReviveInterval);
-        return;
-      }
-      if (ytPlayer && ytPlayer.getPlayerState && !isIntentionalPause) {
-        if (ytPlayer.getPlayerState() === 2) { // 2 = Paused
+    activateBackgroundBridge();
+    // Agar Android background me video stream ko pause kare to turant re-trigger karein
+    if (!isIntentionalPause && ytPlayer && ytPlayer.getPlayerState) {
+      setTimeout(() => {
+        if (!isIntentionalPause && ytPlayer.getPlayerState() !== 1) {
           ytPlayer.playVideo();
         }
-      }
-    }, 400);
-
-    setTimeout(() => {
-      if (backgroundReviveInterval) clearInterval(backgroundReviveInterval);
-    }, 6000);
-  } else {
-    if (backgroundReviveInterval) clearInterval(backgroundReviveInterval);
+      }, 150);
+    }
   }
 });
 
@@ -99,7 +86,7 @@ function initYouTubeEngine() {
       controls: 0,
       disablekb: 1,
       fs: 0,
-      playsinline: 1, // Crucial for iOS & Android inline audio
+      playsinline: 1,
       rel: 0
     },
     events: {
@@ -324,7 +311,7 @@ function playTrackIdNow(id) {
     ytPlayer.playVideo();
     updatePlayIcons(true);
     startYtTracker();
-    keepAudioAwake();
+    activateBackgroundBridge();
   } catch (err) {
     console.warn("Player play error:", err);
   }
@@ -335,16 +322,16 @@ function onYtPlayerStateChange(event) {
     isIntentionalPause = false;
     updatePlayIcons(true);
     startYtTracker();
-    keepAudioAwake();
+    activateBackgroundBridge();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else if (event.data === YT.PlayerState.PAUSED) {
     if (document.hidden && !isIntentionalPause) {
-      keepAudioAwake();
+      activateBackgroundBridge();
       setTimeout(() => {
         if (!isIntentionalPause && ytPlayer && ytPlayer.playVideo) {
           ytPlayer.playVideo();
         }
-      }, 200);
+      }, 150);
     } else {
       updatePlayIcons(false);
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -377,8 +364,19 @@ function startYtTracker() {
       if (totTime) totTime.innerText = formatTime(dur);
 
       updateLyricsProgress(cur);
+
+      // Lock-screen position state sync to prevent Android timer freezing (--:--)
+      if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: dur,
+            playbackRate: 1,
+            position: Math.min(cur, dur)
+          });
+        } catch (e) {}
+      }
     }
-  }, 250);
+  }, 350);
 }
 
 function togglePlayState() {
@@ -392,7 +390,7 @@ function togglePlayState() {
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   } else {
     isIntentionalPause = false;
-    keepAudioAwake();
+    activateBackgroundBridge();
     ytPlayer.playVideo();
     updatePlayIcons(true);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -907,7 +905,7 @@ function setupMediaSession() {
 
   navigator.mediaSession.setActionHandler('play', () => {
     isIntentionalPause = false;
-    keepAudioAwake();
+    activateBackgroundBridge();
     if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
     updatePlayIcons(true);
     navigator.mediaSession.playbackState = 'playing';

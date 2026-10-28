@@ -8,16 +8,34 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend assets
+// Serve static assets reliably
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
+
+app.get('/style.css', (req, res) => {
+    const publicCss = path.join(__dirname, 'public', 'style.css');
+    const rootCss = path.join(__dirname, 'style.css');
+    res.setHeader('Content-Type', 'text/css');
+    if (fs.existsSync(publicCss)) return res.sendFile(publicCss);
+    if (fs.existsSync(rootCss)) return res.sendFile(rootCss);
+    res.status(404).send('style.css not found');
+});
+
+app.get('/app.js', (req, res) => {
+    const publicJs = path.join(__dirname, 'public', 'app.js');
+    const rootJs = path.join(__dirname, 'app.js');
+    res.setHeader('Content-Type', 'application/javascript');
+    if (fs.existsSync(publicJs)) return res.sendFile(publicJs);
+    if (fs.existsSync(rootJs)) return res.sendFile(rootJs);
+    res.status(404).send('app.js not found');
+});
 
 app.get('/', (req, res) => {
     const publicPath = path.join(__dirname, 'public', 'index.html');
     const rootPath = path.join(__dirname, 'index.html');
-    if (fs.existsSync(publicPath)) res.sendFile(publicPath);
-    else if (fs.existsSync(rootPath)) res.sendFile(rootPath);
-    else res.status(404).send('index.html not found');
+    if (fs.existsSync(publicPath)) return res.sendFile(publicPath);
+    if (fs.existsSync(rootPath)) return res.sendFile(rootPath);
+    res.status(404).send('index.html not found');
 });
 
 // In-Memory Search Cache (0ms response for repeated queries)
