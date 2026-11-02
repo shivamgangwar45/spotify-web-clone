@@ -3,6 +3,8 @@ const cors = require('cors');
 const yts = require('yt-search');
 const path = require('path');
 const fs = require('fs');
+const { Readable } = require('stream');
+const ytdl = require('@distube/ytdl-core');
 
 const app = express();
 app.use(cors());
@@ -70,6 +72,80 @@ app.get('/api/search', async (req, res) => {
     } catch (err) {
         console.error('[Search Error]:', err.message);
         res.status(500).json({ error: 'Search failed' });
+    }
+});
+
+// ================= AUDIO STREAM PROXY =================
+// Phone ke background / lock-screen me <audio> chalta hai, YouTube iframe nahi.
+// Isliye server YouTube se audio-only URL nikaalta hai aur Range support ke saath
+// browser ko proxy karta hai (seek bhi chalta hai). Node 18+ chahiye (global fetch).
+const streamCache = new Map(); // videoId -> { url, mime, expires }
+const STREAM_TTL_MS = 90 * 60 * 1000;
+
+async function resolveAudio(id, force = false) {
+    const hit = streamCache.get(id);
+    if (!force && hit && hit.expires > Date.now()) return hit;
+
+    const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${id}`);
+    const audioOnly = info.formats.filter(f => f.hasAudio && !f.hasVideo && f.url);
+    if (!audioOnly.length) throw new Error('No audio formats');
+
+    // m4a/AAC pehle (Safari + Android dono me chalta hai), warna best available
+    const mp4 = audioOnly.filter(f => f.container === 'mp4');
+    const pool = mp4.length ? mp4 : audioOnly;
+    pool.sort((a, b) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
+    const best = pool[0];
+
+    const entry = {
+        url: best.url,
+        mime: (best.mimeType || 'audio/mp4').split(';')[0],
+        expires: Date.now() + STREAM_TTL_MS
+    };
+
+    if (streamCache.size > 200) streamCache.delete(streamCache.keys().next().value);
+    streamCache.set(id, entry);
+    return entry;
+}
+
+async function openUpstream(entry, range, signal) {
+    const headers = {};
+    if (range) headers.Range = range;
+    return fetch(entry.url, { headers, signal });
+}
+
+app.get('/api/stream/:id', async (req, res) => {
+    const id = req.params.id;
+    if (!/^[\w-]{11}$/.test(id)) return res.status(400).send('Bad video id');
+
+    const controller = new AbortController();
+    res.on('close', () => controller.abort());
+
+    try {
+        let entry = await resolveAudio(id);
+        let up = await openUpstream(entry, req.headers.range, controller.signal);
+
+        // URL expire/403 ho gaya to ek baar fresh URL le kar retry
+        if (!up.ok) {
+            entry = await resolveAudio(id, true);
+            up = await openUpstream(entry, req.headers.range, controller.signal);
+        }
+        if (!up.ok) return res.status(502).send('Upstream error');
+
+        res.status(up.status);
+        res.setHeader('Content-Type', entry.mime);
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Cache-Control', 'no-store');
+        const len = up.headers.get('content-length');
+        const crange = up.headers.get('content-range');
+        if (len) res.setHeader('Content-Length', len);
+        if (crange) res.setHeader('Content-Range', crange);
+
+        Readable.fromWeb(up.body).on('error', () => res.destroy()).pipe(res);
+    } catch (err) {
+        if (err.name === 'AbortError') return;
+        console.error('[Stream Error]:', err.message);
+        streamCache.delete(id);
+        if (!res.headersSent) res.status(502).send('Stream failed');
     }
 });
 
