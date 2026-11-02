@@ -4,13 +4,19 @@ const yts = require('yt-search');
 const path = require('path');
 const fs = require('fs');
 const { Readable } = require('stream');
-const ytdl = require('@distube/ytdl-core');
+
+let ytdl;
+try {
+    ytdl = require('@distube/ytdl-core');
+} catch (e) {
+    console.error('[@distube/ytdl-core missing]: Ensure npm install has run');
+}
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static assets reliably
+// Serve static frontend assets
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
@@ -40,10 +46,9 @@ app.get('/', (req, res) => {
     res.status(404).send('index.html not found');
 });
 
-// In-Memory Search Cache (0ms response for repeated queries)
+// Search Cache
 const searchCache = new Map();
 
-// Optimized Fast Search API
 app.get('/api/search', async (req, res) => {
     try {
         const query = (req.query.q || '').trim().toLowerCase();
@@ -75,22 +80,27 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// ================= AUDIO STREAM PROXY =================
-// Phone ke background / lock-screen me <audio> chalta hai, YouTube iframe nahi.
-// Isliye server YouTube se audio-only URL nikaalta hai aur Range support ke saath
-// browser ko proxy karta hai (seek bhi chalta hai). Node 18+ chahiye (global fetch).
-const streamCache = new Map(); // videoId -> { url, mime, expires }
+// Audio Stream Engine
+const streamCache = new Map();
 const STREAM_TTL_MS = 90 * 60 * 1000;
 
 async function resolveAudio(id, force = false) {
+    if (!ytdl) throw new Error('ytdl library not loaded');
+
     const hit = streamCache.get(id);
     if (!force && hit && hit.expires > Date.now()) return hit;
 
-    const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${id}`);
-    const audioOnly = info.formats.filter(f => f.hasAudio && !f.hasVideo && f.url);
-    if (!audioOnly.length) throw new Error('No audio formats');
+    const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${id}`, {
+        requestOptions: {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        }
+    });
 
-    // m4a/AAC pehle (Safari + Android dono me chalta hai), warna best available
+    const audioOnly = info.formats.filter(f => f.hasAudio && !f.hasVideo && f.url);
+    if (!audioOnly.length) throw new Error('No audio formats found');
+
     const mp4 = audioOnly.filter(f => f.container === 'mp4');
     const pool = mp4.length ? mp4 : audioOnly;
     pool.sort((a, b) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
@@ -107,12 +117,6 @@ async function resolveAudio(id, force = false) {
     return entry;
 }
 
-async function openUpstream(entry, range, signal) {
-    const headers = {};
-    if (range) headers.Range = range;
-    return fetch(entry.url, { headers, signal });
-}
-
 app.get('/api/stream/:id', async (req, res) => {
     const id = req.params.id;
     if (!/^[\w-]{11}$/.test(id)) return res.status(400).send('Bad video id');
@@ -122,14 +126,16 @@ app.get('/api/stream/:id', async (req, res) => {
 
     try {
         let entry = await resolveAudio(id);
-        let up = await openUpstream(entry, req.headers.range, controller.signal);
+        const headers = {};
+        if (req.headers.range) headers.Range = req.headers.range;
 
-        // URL expire/403 ho gaya to ek baar fresh URL le kar retry
+        let up = await fetch(entry.url, { headers, signal: controller.signal });
+
         if (!up.ok) {
             entry = await resolveAudio(id, true);
-            up = await openUpstream(entry, req.headers.range, controller.signal);
+            up = await fetch(entry.url, { headers, signal: controller.signal });
         }
-        if (!up.ok) return res.status(502).send('Upstream error');
+        if (!up.ok) return res.status(502).send('Upstream stream expired');
 
         res.status(up.status);
         res.setHeader('Content-Type', entry.mime);
@@ -140,16 +146,21 @@ app.get('/api/stream/:id', async (req, res) => {
         if (len) res.setHeader('Content-Length', len);
         if (crange) res.setHeader('Content-Range', crange);
 
-        Readable.fromWeb(up.body).on('error', () => res.destroy()).pipe(res);
+        if (Readable.fromWeb && up.body) {
+            Readable.fromWeb(up.body).on('error', () => res.destroy()).pipe(res);
+        } else {
+            const buffer = await up.arrayBuffer();
+            res.send(Buffer.from(buffer));
+        }
     } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('[Stream Error]:', err.message);
         streamCache.delete(id);
-        if (!res.headersSent) res.status(502).send('Stream failed');
+        if (!res.headersSent) res.status(502).send('Stream error');
     }
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });
