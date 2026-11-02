@@ -43,61 +43,86 @@ let sleepMode = null;
 // Feature: Volume Engine State
 let previousVolume = 100;
 
-// ================= HARDWARE BACKGROUND CARRIER WAVE =================
-// Generates an unbroken silent carrier signal directly to Android sound chip
-let hwContext = null;
-let hwOscillator = null;
+// ================= PLAYBACK ENGINE =================
+// Primary: native <audio> element fed by our own /api/stream/:id endpoint.
+//   -> Android/iOS browsers keep playing this with screen locked.
+// Fallback: hidden YouTube iframe (mobile browsers pause this on screen lock).
+let useNativeAudio = true;
 let isIntentionalPause = false;
 
-function startHardwareAudioCarrier() {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
+function engIsPlaying() {
+  if (useNativeAudio) return !audioElem.paused && !audioElem.ended;
+  return !!(ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 1);
+}
 
-    if (!hwContext) {
-      hwContext = new AudioCtx();
-    }
-
-    if (hwContext.state === 'suspended') {
-      hwContext.resume();
-    }
-
-    if (!hwOscillator) {
-      // 1Hz frequency: Completely inaudible, but registers as active audio stream in Android OS
-      hwOscillator = hwContext.createOscillator();
-      const gainNode = hwContext.createGain();
-
-      hwOscillator.type = 'sine';
-      hwOscillator.frequency.setValueAtTime(1, hwContext.currentTime);
-      gainNode.gain.setValueAtTime(0.0001, hwContext.currentTime);
-
-      hwOscillator.connect(gainNode);
-      gainNode.connect(hwContext.destination);
-      hwOscillator.start();
-    }
-  } catch (e) {
-    console.warn('[Audio Carrier Guard]:', e.message);
+function engPlay() {
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  if (useNativeAudio) {
+    const p = audioElem.play();
+    if (p && p.catch) p.catch(e => console.warn('[audio play]', e.message));
+  } else if (ytPlayer && ytPlayer.playVideo) {
+    ytPlayer.playVideo();
   }
 }
 
-// User ke pehle touch / click par hi hardware audio channel unlock karein
-window.addEventListener('touchstart', () => startHardwareAudioCarrier(), { once: true, passive: true });
-window.addEventListener('click', () => startHardwareAudioCarrier(), { once: true, passive: true });
+function engPause() {
+  if (useNativeAudio) audioElem.pause();
+  else if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+}
 
-// Background Screen-Off Watchdog
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    startHardwareAudioCarrier();
+function engCurrentTime() {
+  if (useNativeAudio) return audioElem.currentTime || 0;
+  return (ytPlayer && ytPlayer.getCurrentTime && ytPlayer.getCurrentTime()) || 0;
+}
 
-    // Agar OS background me video stream ko pause kare to wake-up signal bhejein
-    if (!isIntentionalPause && ytPlayer && ytPlayer.getPlayerState) {
-      setTimeout(() => {
-        if (!isIntentionalPause && ytPlayer.getPlayerState() !== 1 && ytPlayer.playVideo) {
-          ytPlayer.playVideo();
-        }
-      }, 120);
-    }
+function engDuration() {
+  if (useNativeAudio) {
+    const d = audioElem.duration;
+    return Number.isFinite(d) ? d : 0;
   }
+  return (ytPlayer && ytPlayer.getDuration && ytPlayer.getDuration()) || 0;
+}
+
+function engSeek(sec) {
+  if (useNativeAudio) {
+    try { audioElem.currentTime = sec; } catch (e) {}
+  } else if (ytPlayer && ytPlayer.seekTo) {
+    ytPlayer.seekTo(sec, true);
+  }
+}
+
+function engSetVolume(v) { // v: 0-100
+  audioElem.volume = Math.min(1, Math.max(0, v / 100));
+  if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(v);
+}
+
+function engGetVolume() {
+  return useNativeAudio ? Math.round(audioElem.volume * 100)
+                        : ((ytPlayer && ytPlayer.getVolume && ytPlayer.getVolume()) || 100);
+}
+
+// ---- <audio> element events ----
+audioElem.addEventListener('play', () => {
+  isIntentionalPause = false;
+  updatePlayIcons(true);
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+});
+
+audioElem.addEventListener('pause', () => {
+  if (audioElem.ended) return;
+  updatePlayIcons(false);
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+});
+
+audioElem.addEventListener('ended', () => {
+  if (sleepMode === 'end_of_track') pauseOnSleep();
+  else playNextTrack();
+});
+
+audioElem.addEventListener('error', () => {
+  if (!useNativeAudio || !currentTrack) return;
+  console.warn('[audio] stream failed, falling back to YouTube iframe');
+  fallbackToYouTube(currentTrack.id);
 });
 
 // ================= YOUTUBE IFRAME ENGINE INITIALIZER =================
@@ -123,9 +148,10 @@ function initYouTubeEngine() {
     events: {
       onReady: () => {
         ytReady = true;
-        if (pendingTrackToPlay) {
-          playTrackIdNow(pendingTrackToPlay);
+        if (pendingTrackToPlay && !useNativeAudio) {
+          const id = pendingTrackToPlay;
           pendingTrackToPlay = null;
+          loadInYouTube(id);
         }
       },
       onStateChange: onYtPlayerStateChange
@@ -326,62 +352,68 @@ function playSongByIndex(idx) {
   updateMediaSessionMetadata(track);
   renderQueueView();
 
-  if (ytPlayer && ytReady && ytPlayer.loadVideoById) {
-    playTrackIdNow(track.id);
-  } else {
-    pendingTrackToPlay = track.id;
-    if (!ytPlayer && window.YT && window.YT.Player) {
-      initYouTubeEngine();
-    }
-  }
+  playTrackIdNow(track.id);
 }
 
 function playTrackIdNow(id) {
+  useNativeAudio = true;
+  isIntentionalPause = false;
+  pendingTrackToPlay = null;
+
+  // make sure the YouTube fallback is silent
+  try { if (ytPlayer && ytReady && ytPlayer.stopVideo) ytPlayer.stopVideo(); } catch (e) {}
+
+  // Re-use the SAME <audio> element for every track: browsers allow it to
+  // keep auto-advancing in the background / with screen locked.
+  audioElem.src = `/api/stream/${encodeURIComponent(id)}`;
+  engPlay();
+  updatePlayIcons(true);
+  startTracker();
+}
+
+function fallbackToYouTube(id) {
+  useNativeAudio = false;
+  try { audioElem.pause(); } catch (e) {}
+  if (ytPlayer && ytReady && ytPlayer.loadVideoById) {
+    loadInYouTube(id);
+  } else {
+    pendingTrackToPlay = id;
+    if (!ytPlayer && window.YT && window.YT.Player) initYouTubeEngine();
+  }
+}
+
+function loadInYouTube(id) {
   try {
-    startHardwareAudioCarrier();
     ytPlayer.loadVideoById({ videoId: id, startSeconds: 0 });
     ytPlayer.playVideo();
     updatePlayIcons(true);
-    startYtTracker();
+    startTracker();
   } catch (err) {
-    console.warn("Player play error:", err);
+    console.warn('Player play error:', err);
   }
 }
 
+// YouTube iframe state changes (only relevant while in fallback mode)
 function onYtPlayerStateChange(event) {
+  if (useNativeAudio) return;
   if (event.data === YT.PlayerState.PLAYING) {
-    isIntentionalPause = false;
-    startHardwareAudioCarrier();
     updatePlayIcons(true);
-    startYtTracker();
+    startTracker();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   } else if (event.data === YT.PlayerState.PAUSED) {
-    if (document.hidden && !isIntentionalPause) {
-      startHardwareAudioCarrier();
-      setTimeout(() => {
-        if (!isIntentionalPause && ytPlayer && ytPlayer.playVideo) {
-          ytPlayer.playVideo();
-        }
-      }, 150);
-    } else {
-      updatePlayIcons(false);
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-    }
+    updatePlayIcons(false);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   } else if (event.data === YT.PlayerState.ENDED) {
-    if (sleepMode === 'end_of_track') {
-      pauseOnSleep();
-    } else {
-      playNextTrack();
-    }
+    if (sleepMode === 'end_of_track') pauseOnSleep();
+    else playNextTrack();
   }
 }
 
-function startYtTracker() {
+function startTracker() {
   if (ytProgressTimer) clearInterval(ytProgressTimer);
   ytProgressTimer = setInterval(() => {
-    if (!ytPlayer || !ytPlayer.getCurrentTime) return;
-    const cur = ytPlayer.getCurrentTime() || 0;
-    const dur = ytPlayer.getDuration() || 0;
+    const cur = engCurrentTime();
+    const dur = engDuration();
     if (dur > 0) {
       const pct = (cur / dur) * 100;
       const miniFill = document.getElementById('miniProgressFill');
@@ -396,7 +428,7 @@ function startYtTracker() {
 
       updateLyricsProgress(cur);
 
-      // Lock-screen position state sync (stops --:-- freeze on Android)
+      // Lock-screen position state sync
       if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
         try {
           navigator.mediaSession.setPositionState({
@@ -411,17 +443,15 @@ function startYtTracker() {
 }
 
 function togglePlayState() {
-  if (!ytPlayer || !ytPlayer.getPlayerState) return;
-  const state = ytPlayer.getPlayerState();
-  if (state === 1) {
+  if (!currentTrack) return;
+  if (engIsPlaying()) {
     isIntentionalPause = true;
-    ytPlayer.pauseVideo();
+    engPause();
     updatePlayIcons(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   } else {
     isIntentionalPause = false;
-    startHardwareAudioCarrier();
-    ytPlayer.playVideo();
+    engPlay();
     updatePlayIcons(true);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   }
@@ -470,9 +500,10 @@ function seekAudioTime(e) {
   const bar = e.currentTarget;
   const rect = bar.getBoundingClientRect();
   const pos = (e.clientX - rect.left) / rect.width;
-  if (ytPlayer && ytPlayer.getDuration) {
-    const targetSec = pos * ytPlayer.getDuration();
-    ytPlayer.seekTo(targetSec, true);
+  const dur = engDuration();
+  if (dur > 0) {
+    const targetSec = Math.min(1, Math.max(0, pos)) * dur;
+    engSeek(targetSec);
     updateLyricsProgress(targetSec);
   }
 }
@@ -853,9 +884,20 @@ function removeQueueItem(idx) {
 // ================= EQUALIZER & BASS BOOST =================
 
 function initEqualizer() {
+  // Intentionally empty: the WebAudio graph is created lazily in
+  // ensureEqualizerGraph() the first time the user actually changes the EQ.
+  // Routing <audio> through an AudioContext can get suspended by the OS when
+  // the screen locks, so we keep normal playback on the plain <audio> path.
+}
+
+function ensureEqualizerGraph() {
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return true;
+  }
   try {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
+    if (!AudioContextClass) return false;
     audioCtx = new AudioContextClass();
 
     bassFilter = audioCtx.createBiquadFilter();
@@ -871,15 +913,17 @@ function initEqualizer() {
     trebleFilter.type = 'highshelf';
     trebleFilter.frequency.value = 10000;
 
-    if (audioElem) {
-      eqSource = audioCtx.createMediaElementSource(audioElem);
-      eqSource.connect(bassFilter);
-      bassFilter.connect(midFilter);
-      midFilter.connect(trebleFilter);
-      trebleFilter.connect(audioCtx.destination);
-    }
+    eqSource = audioCtx.createMediaElementSource(audioElem);
+    eqSource.connect(bassFilter);
+    bassFilter.connect(midFilter);
+    midFilter.connect(trebleFilter);
+    trebleFilter.connect(audioCtx.destination);
+
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return true;
   } catch (err) {
-    console.warn("Equalizer initialized safely:", err);
+    console.warn('Equalizer unavailable:', err);
+    return false;
   }
 }
 
@@ -896,15 +940,18 @@ function closeEqModal() {
 
 function updateEqBand(band, val) {
   const num = parseFloat(val);
-  if (band === 'bass' && bassFilter) {
-    bassFilter.gain.value = num;
-    document.getElementById('eqBassVal').innerText = `${num > 0 ? '+' : ''}${num} dB`;
-  } else if (band === 'mid' && midFilter) {
-    midFilter.gain.value = num;
-    document.getElementById('eqMidVal').innerText = `${num > 0 ? '+' : ''}${num} dB`;
-  } else if (band === 'treble' && trebleFilter) {
-    trebleFilter.gain.value = num;
-    document.getElementById('eqTrebleVal').innerText = `${num > 0 ? '+' : ''}${num} dB`;
+  const label = `${num > 0 ? '+' : ''}${num} dB`;
+  if (num !== 0 || audioCtx) ensureEqualizerGraph();
+
+  if (band === 'bass') {
+    if (bassFilter) bassFilter.gain.value = num;
+    document.getElementById('eqBassVal').innerText = label;
+  } else if (band === 'mid') {
+    if (midFilter) midFilter.gain.value = num;
+    document.getElementById('eqMidVal').innerText = label;
+  } else if (band === 'treble') {
+    if (trebleFilter) trebleFilter.gain.value = num;
+    document.getElementById('eqTrebleVal').innerText = label;
   }
 }
 
@@ -935,15 +982,14 @@ function setupMediaSession() {
 
   navigator.mediaSession.setActionHandler('play', () => {
     isIntentionalPause = false;
-    startHardwareAudioCarrier();
-    if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
+    engPlay();
     updatePlayIcons(true);
     navigator.mediaSession.playbackState = 'playing';
   });
 
   navigator.mediaSession.setActionHandler('pause', () => {
     isIntentionalPause = true;
-    if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+    engPause();
     updatePlayIcons(false);
     navigator.mediaSession.playbackState = 'paused';
   });
@@ -952,9 +998,7 @@ function setupMediaSession() {
   navigator.mediaSession.setActionHandler('nexttrack', () => playNextTrack());
   
   navigator.mediaSession.setActionHandler('seekto', (details) => {
-    if (details.seekTime && ytPlayer && ytPlayer.seekTo) {
-      ytPlayer.seekTo(details.seekTime, true);
-    }
+    if (typeof details.seekTime === 'number') engSeek(details.seekTime);
   });
 }
 
@@ -1097,9 +1141,7 @@ function renderParsedLyrics() {
     p.id = `lyric-line-${idx}`;
     p.innerText = item.text;
     p.onclick = () => {
-      if (ytPlayer && ytPlayer.seekTo) {
-        ytPlayer.seekTo(item.time, true);
-      }
+      engSeek(item.time);
     };
     box.appendChild(p);
   });
@@ -1270,24 +1312,19 @@ function cancelSleepTimer() {
 }
 
 function executeSleepFadeOut() {
-  if (!ytPlayer || !ytPlayer.getVolume) {
-    pauseOnSleep();
-    return;
-  }
-
-  let vol = ytPlayer.getVolume() || 100;
+  let vol = engGetVolume() || 100;
   const originalVol = vol;
   const fadeStep = vol / 10;
 
   const fadeInterval = setInterval(() => {
     vol = Math.max(0, vol - fadeStep);
-    if (ytPlayer.setVolume) ytPlayer.setVolume(vol);
+    engSetVolume(vol);
 
     if (vol <= 0) {
       clearInterval(fadeInterval);
       pauseOnSleep();
       setTimeout(() => {
-        if (ytPlayer.setVolume) ytPlayer.setVolume(originalVol);
+        engSetVolume(originalVol);
       }, 1000);
     }
   }, 500);
@@ -1295,9 +1332,7 @@ function executeSleepFadeOut() {
 
 function pauseOnSleep() {
   isIntentionalPause = true;
-  if (ytPlayer && ytPlayer.pauseVideo) {
-    ytPlayer.pauseVideo();
-  }
+  engPause();
   updatePlayIcons(false);
   cancelSleepTimer();
 }
@@ -1308,9 +1343,7 @@ function changePlayerVolume(val) {
   const num = parseInt(val, 10);
   const icon = document.getElementById('volumeIconBtn');
 
-  if (ytPlayer && ytPlayer.setVolume) {
-    ytPlayer.setVolume(num);
-  }
+  engSetVolume(num);
 
   if (icon) {
     if (num === 0) {
@@ -1328,7 +1361,7 @@ function changePlayerVolume(val) {
 
 function toggleMuteVolume() {
   const slider = document.getElementById('playerVolumeSlider');
-  if (!ytPlayer || !slider) return;
+  if (!slider) return;
 
   if (slider.value > 0) {
     previousVolume = slider.value;
