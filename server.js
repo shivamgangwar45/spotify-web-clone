@@ -160,6 +160,50 @@ app.get('/api/stream/:id', async (req, res) => {
     }
 });
 
+// ================= DIRECT MP3 DOWNLOAD PROXY =================
+app.get('/api/download', async (req, res) => {
+    const videoId = req.query.id;
+    let cleanTitle = (req.query.title || 'song')
+        .replace(/[^\w\s.-]/gi, '')
+        .trim()
+        .replace(/\s+/g, '_');
+
+    if (!videoId || !/^[\w-]{11}$/.test(videoId)) {
+        return res.status(400).send('Valid video ID is required');
+    }
+
+    const controller = new AbortController();
+    res.on('close', () => controller.abort());
+
+    try {
+        let entry = await resolveAudio(videoId);
+        let up = await fetch(entry.url, { signal: controller.signal });
+
+        if (!up.ok) {
+            entry = await resolveAudio(videoId, true);
+            up = await fetch(entry.url, { signal: controller.signal });
+        }
+
+        if (!up.ok) return res.status(502).send('Failed to fetch audio stream');
+
+        res.setHeader('Content-Disposition', `attachment; filename="${cleanTitle}.mp3"`);
+        res.setHeader('Content-Type', 'audio/mpeg');
+        const len = up.headers.get('content-length');
+        if (len) res.setHeader('Content-Length', len);
+
+        if (Readable.fromWeb && up.body) {
+            Readable.fromWeb(up.body).on('error', () => res.destroy()).pipe(res);
+        } else {
+            const buffer = await up.arrayBuffer();
+            res.send(Buffer.from(buffer));
+        }
+    } catch (err) {
+        if (err.name === 'AbortError') return;
+        console.error('[Download Error]:', err.message);
+        if (!res.headersSent) res.status(500).send('Download failed');
+    }
+});
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);

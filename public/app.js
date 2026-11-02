@@ -44,9 +44,6 @@ let sleepMode = null;
 let previousVolume = 100;
 
 // ================= PLAYBACK ENGINE =================
-// Primary: native <audio> element fed by our own /api/stream/:id endpoint.
-//   -> Android/iOS browsers keep playing this with screen locked.
-// Fallback: hidden YouTube iframe (mobile browsers pause this on screen lock).
 let useNativeAudio = true;
 let isIntentionalPause = false;
 
@@ -91,7 +88,7 @@ function engSeek(sec) {
   }
 }
 
-function engSetVolume(v) { // v: 0-100
+function engSetVolume(v) {
   audioElem.volume = Math.min(1, Math.max(0, v / 100));
   if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(v);
 }
@@ -101,7 +98,7 @@ function engGetVolume() {
                         : ((ytPlayer && ytPlayer.getVolume && ytPlayer.getVolume()) || 100);
 }
 
-// ---- <audio> element events ----
+// Native <audio> events
 audioElem.addEventListener('play', () => {
   isIntentionalPause = false;
   updatePlayIcons(true);
@@ -121,7 +118,7 @@ audioElem.addEventListener('ended', () => {
 
 audioElem.addEventListener('error', () => {
   if (!useNativeAudio || !currentTrack) return;
-  console.warn('[audio] stream failed, falling back to YouTube iframe');
+  console.warn('[audio] Stream proxy error, falling back to YouTube iframe');
   fallbackToYouTube(currentTrack.id);
 });
 
@@ -300,6 +297,7 @@ async function handleLiveSearch(val, immediate = false) {
             <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
             <i class="fa-solid fa-folder-plus" title="Add to Playlist" onclick="openAddToPlaylistModal('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
             <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart" style="${isLiked ? 'color:#1ed760;' : ''}" onclick="toggleLike('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', this)"></i>
+            <i class="fa-solid fa-arrow-down" title="Download MP3" onclick="triggerDownloadById('${song.id}', '${encodeURIComponent(song.title)}')"></i>
           </div>
         `;
         resultsWrap.appendChild(row);
@@ -360,11 +358,8 @@ function playTrackIdNow(id) {
   isIntentionalPause = false;
   pendingTrackToPlay = null;
 
-  // make sure the YouTube fallback is silent
   try { if (ytPlayer && ytReady && ytPlayer.stopVideo) ytPlayer.stopVideo(); } catch (e) {}
 
-  // Re-use the SAME <audio> element for every track: browsers allow it to
-  // keep auto-advancing in the background / with screen locked.
   audioElem.src = `/api/stream/${encodeURIComponent(id)}`;
   engPlay();
   updatePlayIcons(true);
@@ -393,7 +388,6 @@ function loadInYouTube(id) {
   }
 }
 
-// YouTube iframe state changes (only relevant while in fallback mode)
 function onYtPlayerStateChange(event) {
   if (useNativeAudio) return;
   if (event.data === YT.PlayerState.PLAYING) {
@@ -428,7 +422,6 @@ function startTracker() {
 
       updateLyricsProgress(cur);
 
-      // Lock-screen position state sync
       if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
         try {
           navigator.mediaSession.setPositionState({
@@ -513,6 +506,47 @@ function formatTime(sec) {
   const m = Math.floor(s / 60);
   const rem = s % 60;
   return `${m}:${rem < 10 ? '0' : ''}${rem}`;
+}
+
+// ================= DOWNLOAD DISPATCHER =================
+
+function triggerDownloadCurrent(e) {
+  if (e) e.stopPropagation();
+  if (!currentTrack) return alert('Play a track first to download!');
+  triggerDownloadById(currentTrack.id, encodeURIComponent(currentTrack.title));
+}
+
+function triggerDownloadById(id, titleEnc) {
+  const cleanTitle = decodeURIComponent(titleEnc)
+    .replace(/[^\w\s.-]/gi, '')
+    .trim()
+    .replace(/\s+/g, '_');
+
+  const toast = document.getElementById('downloadToast');
+  const trackName = document.getElementById('toastTrackName');
+  const statusText = document.getElementById('toastStatusText');
+  const fill = document.getElementById('toastProgressFill');
+
+  if (toast) {
+    if (trackName) trackName.innerText = decodeURIComponent(titleEnc);
+    if (statusText) statusText.innerText = 'Starting MP3 download...';
+    if (fill) fill.style.width = '60%';
+    toast.style.display = 'flex';
+  }
+
+  const downloadUrl = `/api/download?id=${id}&title=${encodeURIComponent(cleanTitle)}`;
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.setAttribute('download', `${cleanTitle}.mp3`);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  if (fill) fill.style.width = '100%';
+  if (statusText) statusText.innerText = 'Download dispatched!';
+  setTimeout(() => {
+    if (toast) toast.style.display = 'none';
+  }, 2500);
 }
 
 // ================= NAVIGATION & FULLSCREEN VIEW =================
@@ -736,6 +770,7 @@ function renderActivePlaylistTracks() {
         ${activePlaylistId !== 'liked' ? `<i class="fa-solid fa-trash" title="Remove" style="font-size:14px; color:#ff5555;" onclick="removeSongFromPlaylist('${song.id}')"></i>` : ''}
         <i class="fa-solid fa-layer-group" title="Add to Queue" onclick="addToQueue('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}')"></i>
         <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart" style="${isLiked ? 'color:#1ed760;' : ''}" onclick="toggleLike('${song.id}', '${encodeURIComponent(song.title)}', '${encodeURIComponent(song.artist)}', '${song.thumbnail}', this)"></i>
+        <i class="fa-solid fa-arrow-down" title="Download MP3" onclick="triggerDownloadById('${song.id}', '${encodeURIComponent(song.title)}')"></i>
       </div>
     `;
     container.appendChild(row);
@@ -883,12 +918,7 @@ function removeQueueItem(idx) {
 
 // ================= EQUALIZER & BASS BOOST =================
 
-function initEqualizer() {
-  // Intentionally empty: the WebAudio graph is created lazily in
-  // ensureEqualizerGraph() the first time the user actually changes the EQ.
-  // Routing <audio> through an AudioContext can get suspended by the OS when
-  // the screen locks, so we keep normal playback on the plain <audio> path.
-}
+function initEqualizer() {}
 
 function ensureEqualizerGraph() {
   if (audioCtx) {

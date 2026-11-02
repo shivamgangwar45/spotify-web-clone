@@ -143,7 +143,12 @@
       </div>
     </div>
     <div class="mini-right-controls" onclick="event.stopPropagation()">
-      <button class="mini-control-icon" onclick="togglePlayState()"><i class="fa-solid fa-play" id="miniPlayIcon"></i></button>
+      <button class="mini-control-icon" onclick="triggerDownloadCurrent(event)" title="Download Song">
+        <i class="fa-solid fa-arrow-down"></i>
+      </button>
+      <button class="mini-control-icon" onclick="togglePlayState()">
+        <i class="fa-solid fa-play" id="miniPlayIcon"></i>
+      </button>
     </div>
     <div class="mini-progress-line">
       <div class="mini-progress-fill" id="miniProgressFill"></div>
@@ -234,7 +239,7 @@
         </div>
       </div>
 
-      <!-- Transport Controls -->
+      <!-- Transport Controls (with Download) -->
       <div class="full-transport-row">
         <button class="full-trans-icon" onclick="toggleShuffle()" id="shuffleBtn"><i class="fa-solid fa-shuffle"></i></button>
         <button class="full-trans-icon" onclick="playPreviousTrack()"><i class="fa-solid fa-backward-step"></i></button>
@@ -242,6 +247,9 @@
           <i class="fa-solid fa-play" id="fullPlayIcon"></i>
         </button>
         <button class="full-trans-icon" onclick="playNextTrack()"><i class="fa-solid fa-forward-step"></i></button>
+        <button class="full-trans-icon" onclick="triggerDownloadCurrent(event)" title="Download Song">
+          <i class="fa-solid fa-circle-down"></i>
+        </button>
       </div>
 
       <div class="full-bottom-actions">
@@ -365,8 +373,21 @@
     </div>
   </div>
 
-  
-<div id="hiddenYtEngine" style="position: fixed; bottom: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; z-index: -1;"></div>
+  <!-- Real-Time Download Toast Notification -->
+  <div class="download-toast-container" id="downloadToast">
+    <div class="toast-content">
+      <div class="toast-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+      <div class="toast-info">
+        <span class="toast-title" id="toastTrackName">Downloading track...</span>
+        <span class="toast-status" id="toastStatusText">Fetching MP3 stream...</span>
+      </div>
+    </div>
+    <div class="toast-progress-bar">
+      <div class="toast-progress-fill" id="toastProgressFill"></div>
+    </div>
+  </div>
+
+  <div id="hiddenYtEngine" style="position: fixed; bottom: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; z-index: -1;"></div>
   <audio id="nativeAudioEngine" preload="auto" crossorigin="anonymous"></audio>
 
   <script src="https://www.youtube.com/iframe_api"></script>
